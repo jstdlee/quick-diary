@@ -51,8 +51,10 @@ final class ScreenshotTests: XCTestCase {
     /// Taps the visible back button. Several navigation bars can be in the tree
     /// (a sheet over the list), so find it by its title.
     private func goBack(_ app: XCUIApplication, to title: String) {
-        let button = app.navigationBars.buttons[title].firstMatch
-        XCTAssertTrue(button.waitForExistence(timeout: 5), "no back button to \(title)")
+        // The list's gear button is also labelled "Settings", so take the hittable one.
+        let matches = app.navigationBars.buttons.matching(NSPredicate(format: "label == %@", title))
+        XCTAssertTrue(matches.firstMatch.waitForExistence(timeout: 5), "no back button to \(title)")
+        let button = matches.allElementsBoundByIndex.first { $0.isHittable } ?? matches.firstMatch
         button.tap()
     }
 
