@@ -37,11 +37,23 @@ final class ScreenshotTests: XCTestCase {
     private func type(_ text: String, into field: XCUIElement) {
         XCTAssertTrue(field.waitForExistence(timeout: 10), "missing field \(field)")
         field.tap()
+        dismissKeyboardTip()
         field.typeText(text)
     }
 
-    private func goBack(_ app: XCUIApplication) {
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+    /// The first keyboard use shows a "slide to type" tip with a Continue button.
+    private func dismissKeyboardTip() {
+        let app = XCUIApplication()
+        let continueButton = app.buttons["Continue"]
+        if continueButton.waitForExistence(timeout: 1) { continueButton.tap() }
+    }
+
+    /// Taps the visible back button. Several navigation bars can be in the tree
+    /// (a sheet over the list), so find it by its title.
+    private func goBack(_ app: XCUIApplication, to title: String) {
+        let button = app.navigationBars.buttons[title].firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 5), "no back button to \(title)")
+        button.tap()
     }
 
     func test1_CreateVault() {
@@ -87,7 +99,7 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(app.otherElements["preview"].waitForExistence(timeout: 5)
                       || app.scrollViews["preview"].waitForExistence(timeout: 5))
         shot("08-preview")
-        goBack(app)
+        goBack(app, to: "Notes")
 
         // New note: typed, autosaved, back in the list.
         XCTAssertTrue(app.buttons["newNote"].waitForExistence(timeout: 10))
@@ -96,7 +108,7 @@ final class ScreenshotTests: XCTestCase {
         type("# Typed by the UI test\n\nHello from **CI**.\n- [ ] check the screenshot", into: editor)
         XCTAssertTrue(element(app, labelContaining: "Saved, encrypted").waitForExistence(timeout: 10))
         shot("09-new-note")
-        goBack(app)
+        goBack(app, to: "Notes")
         XCTAssertTrue(element(app, labelContaining: "Typed by the UI test").waitForExistence(timeout: 10))
         shot("10-notes-after-new")
 
@@ -112,7 +124,7 @@ final class ScreenshotTests: XCTestCase {
         app.buttons["applyPasswordChange"].tap()
         XCTAssertTrue(element(app, labelContaining: "Password changed").waitForExistence(timeout: 15))
         shot("12-password-changed")
-        goBack(app)
+        goBack(app, to: "Settings")
 
         app.buttons["recoveryKey"].tap()
         type("better-pass", into: app.secureTextFields["revealPassword"])

@@ -112,7 +112,9 @@ enum VaultCrypto {
         let kek = deriveKey(password: password, salt: salt, iterations: iterations)
         let sealed = try AES.GCM.seal(masterKey.rawData, using: kek, authenticating: keyAAD)
         return KeyFile(iterations: iterations, salt: salt, wrappedKey: sealed.combined!,
-                       check: checkValue(for: masterKey), created: Date())
+                       check: checkValue(for: masterKey),
+                       // Whole seconds: the JSON (ISO 8601) keeps no fractions.
+                       created: Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down)))
     }
 
     static func unwrap(_ file: KeyFile, password: String) throws -> SymmetricKey {
