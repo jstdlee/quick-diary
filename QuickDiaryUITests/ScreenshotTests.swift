@@ -139,7 +139,11 @@ final class ScreenshotTests: XCTestCase {
         // Today: pick a photo, add the facts.
         app.buttons["quick-Today"].tap()
         XCTAssertTrue(element(app, labelContaining: "Pay the electricity bill").waitForExistence(timeout: 10))
-        app.buttons["todayPhoto"].firstMatch.tap()
+        // The sheet opens at half height; pull it up so the photo grid loads.
+        let photo = app.buttons["todayPhoto"].firstMatch
+        if !photo.waitForExistence(timeout: 2) { app.swipeUp() }
+        XCTAssertTrue(photo.waitForExistence(timeout: 10))
+        photo.tap()
         shot("09a-today")
         app.buttons["todayAdd"].tap()
         XCTAssertTrue(wait(for: editor, toContain: "## Today", timeout: 10))

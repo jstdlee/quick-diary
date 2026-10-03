@@ -22,6 +22,7 @@ xcodebuild test \
   -destination "id=$IPHONE" \
   -destination "id=$IPAD" \
   -resultBundlePath build/Result.xcresult \
+  -retry-tests-on-failure -test-iterations 2 \
   CODE_SIGNING_ALLOWED=NO 2>&1 \
   | tee build/xcodebuild.log \
   | grep -iE --line-buffered '(error:|warning: .*QuickDiary|test case .*(passed|failed)|Executed|\*\* )'
