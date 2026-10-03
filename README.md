@@ -22,6 +22,16 @@ A small SwiftUI app for iPhone and iPad: encrypted Markdown notes in a folder yo
 - **Shortcuts and Siri:**
   - **New Quick Diary entry**
   - **Add to Quick Diary.** It works while the app is locked: the text is encrypted at once with the vault's public key and shows in a "From Shortcuts" note after you unlock. Use it to bring in Apple Notes ("Find Notes"), Health ("Find Health Samples") or anything Shortcuts can read.
+- **Today** (a chip in the capture bar): the weather, reminders you completed, today's calendar and today's photos. Each permission is asked the first time you tap that section, and you pick what goes into the note.
+- **AI**, Off by default:
+  - Apple's on-device model (iOS 26, Apple Intelligence), or your own OpenAI-compatible server (OpenAI, OpenRouter, Ollama, llama.cpp, vLLM…) with the key in the Keychain.
+  - Summarize a note, suggest a title, or summarize your day from Today.
+  - Every answer is shown before it goes into a note, with how much text is sent and where.
+- **Backup:**
+  - S3 / R2 (SigV4). Only new and changed files are uploaded, and "Restore missing files" never replaces anything.
+  - An encrypted **.zip** for Mail, Gmail, Files or AirDrop.
+  - The storage provider sees only encrypted files, plus their names and sizes.
+- **Photo strip** while editing: tap a thumbnail to view it, touch and hold to remove it from the note. The attachment itself stays.
 - **Recently Deleted** keeps notes for 30 days.
 - **Privacy page.** No servers, no accounts, no analytics. Weather sends a location rounded to about 1 km, and only when you tap it.
 
