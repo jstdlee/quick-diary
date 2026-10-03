@@ -169,6 +169,8 @@ final class ScreenshotTests: XCTestCase {
         weekend.swipeLeft()
         app.buttons["Delete"].firstMatch.tap()
         let deletedRow = element(app, labelContaining: "Recently Deleted")
+        // It's the last row: scroll to it on a phone.
+        if !deletedRow.waitForExistence(timeout: 3) { app.swipeUp() }
         XCTAssertTrue(deletedRow.waitForExistence(timeout: 10))
         deletedRow.tap()
         XCTAssertTrue(element(app, labelContaining: "Weekend plan").waitForExistence(timeout: 10))

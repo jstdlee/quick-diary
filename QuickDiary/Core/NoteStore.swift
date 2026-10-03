@@ -18,9 +18,10 @@ struct Note: Identifiable, Hashable {
         Self.contentLines(text).dropFirst()
             .map { line in
                 var s = Substring(line)
-                for marker in ["- [ ] ", "- [x] ", "- ", "* ", "> ", "#"] where s.hasPrefix(marker) {
+                for marker in ["- [ ] ", "- [x] ", "- ", "* ", "> "] where s.hasPrefix(marker) {
                     s = s.dropFirst(marker.count)
                 }
+                s = s.drop(while: { $0 == "#" })
                 return s.trimmingCharacters(in: .whitespaces)
                     .replacingOccurrences(of: "**", with: "")
                     .replacingOccurrences(of: "`", with: "")
