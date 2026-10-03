@@ -16,6 +16,8 @@ struct PrivacyView: View {
             text: "Recognized on this device. Nothing is uploaded."),
         Row(symbol: Biometrics.symbol, title: Biometrics.name,
             text: "The key is kept in this device's Keychain. Quick Diary never sees your face or fingerprint."),
+        Row(symbol: "checklist", title: "Reminders, Calendar, Photos",
+            text: "Read on this device when you open Today and allow it. Only what you pick goes into a note."),
         Row(symbol: "chart.bar.xaxis", title: "No analytics",
             text: "No accounts, no tracking, no Quick Diary servers."),
     ]
@@ -25,6 +27,10 @@ struct PrivacyView: View {
             text: "Encrypted files go where you choose: this iPhone, iCloud Drive or a folder in Files."),
         Row(symbol: "cloud.sun", title: "Weather",
             text: "Only when you tap Weather: your location, rounded to about 1 km, goes to Open-Meteo."),
+        Row(symbol: "sparkles", title: "AI on your server",
+            text: "Only when you tap ✨ or Summarize: that note, or the facts and photos you picked, go to the server you set up. The on-device model sends nothing."),
+        Row(symbol: "externaldrive.badge.icloud", title: "Backup",
+            text: "Only when you tap Back up: the encrypted files go to your S3 or R2 bucket. The provider can't read them."),
         Row(symbol: "square.and.arrow.up", title: "Sharing",
             text: "Only when you tap Share: that note's text, as plain text, to the app you pick."),
     ]

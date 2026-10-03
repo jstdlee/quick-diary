@@ -14,6 +14,7 @@ struct CaptureBar: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var showCamera = false
     @State private var showScanner = false
+    @State private var showToday = false
     @State private var busy: String?
     @State private var added = 0
 
@@ -23,6 +24,8 @@ struct CaptureBar: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                Button { showToday = true } label: { chip("Today", symbol: "sun.max") }
+                    .accessibilityIdentifier("quick-Today")
                 ForEach(quickLists.lists) { list in
                     Menu {
                         ForEach(list.options, id: \.self) { option in
@@ -59,6 +62,9 @@ struct CaptureBar: View {
             guard let item else { return }
             photoItem = nil
             Task { await addPhoto(item) }
+        }
+        .sheet(isPresented: $showToday) {
+            TodaySheet(demo: model.options.isDemo) { add($0) }
         }
         .fullScreenCover(isPresented: $showCamera) {
             CameraPicker { image in addImage(image, alt: "Photo") }

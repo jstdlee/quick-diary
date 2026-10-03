@@ -303,6 +303,9 @@ struct NoteRow: View {
 
 struct EditorView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var ai: AISettings
+    @State private var aiRequest: AIRequest?
+    @State private var aiInsertsTitle = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var noteID: String?
     @State private var text = ""
@@ -346,6 +349,25 @@ struct EditorView: View {
                 .frame(width: 180)
             }
             ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button { ask(AIPrompts.summarizeNote, title: String(localized: "Summary")) } label: {
+                        Label("Summarize note", systemImage: "text.append")
+                    }
+                    Button { ask(AIPrompts.suggestTitle, title: String(localized: "Title"), insertsTitle: true) } label: {
+                        Label("Suggest a title", systemImage: "textformat")
+                    }
+                    if let reason = ai.disabledReason {
+                        Text(reason)
+                    } else if let engine = ai.engine {
+                        Text("Sends this note to \(engine.destination)")
+                    }
+                } label: {
+                    Label("AI", systemImage: "sparkles")
+                }
+                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("aiMenu")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 ShareLink(item: text) {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
@@ -363,12 +385,20 @@ struct EditorView: View {
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
                 if mode == .edit {
+                    if !imagePaths.isEmpty {
+                        PhotoStrip(paths: imagePaths, remove: removeImageLine)
+                    }
                     CaptureBar(append: appendLine, onError: { error = $0 })
                 }
                 statusLine
             }
         }
         .sensoryFeedback(.selection, trigger: mode)
+        .sheet(item: $aiRequest) { request in
+            AIResultSheet(request: request) { result in
+                if aiInsertsTitle { setTitle(result) } else { appendLine("### Summary\n\(result)") }
+            }
+        }
         .background {
             // ⇧⌘P switches Edit / Preview with a hardware keyboard.
             Button("Toggle preview") { mode = mode == .edit ? .preview : .edit }
@@ -433,6 +463,40 @@ struct EditorView: View {
         }
     }
 
+    /// Attachments linked in this note, in order.
+    private var imagePaths: [String] {
+        MarkdownPreview.parse(text).compactMap { block in
+            if case let .image(_, path) = block, path.hasPrefix(AssetStore.dirName + "/") { return path }
+            return nil
+        }
+    }
+
+    /// Removes the photo's line from the note. The attachment itself stays (Settings › Attachments).
+    private func removeImageLine(_ path: String) {
+        text = text.components(separatedBy: "\n")
+            .filter { !($0.hasPrefix("![") && $0.contains("](\(path))")) }
+            .joined(separator: "\n")
+    }
+
+    private func ask(_ instructions: String, title: String, insertsTitle: Bool = false) {
+        guard let engine = ai.engine else { return }
+        aiInsertsTitle = insertsTitle
+        aiRequest = AIRequest(title: title, engine: engine, instructions: instructions, prompt: text)
+    }
+
+    /// Replaces a "# " first line, or adds one.
+    private func setTitle(_ title: String) {
+        let clean = title.trimmingCharacters(in: CharacterSet(charactersIn: "#\"' \n"))
+        var lines = text.components(separatedBy: "\n")
+        if let first = lines.firstIndex(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }),
+           lines[first].hasPrefix("# ") {
+            lines[first] = "# \(clean)"
+        } else {
+            lines.insert("# \(clean)", at: 0)
+        }
+        text = lines.joined(separator: "\n")
+    }
+
     /// Adds a whole line (quick entry, weather, photo) at the end of the note.
     private func appendLine(_ line: String) {
         if !text.isEmpty && !text.hasSuffix("\n") { text += "\n" }
@@ -444,5 +508,69 @@ struct EditorView: View {
     private func insertLine(_ marker: String) {
         if !text.isEmpty && !text.hasSuffix("\n") { text += "\n" }
         text += marker
+    }
+}
+
+/// Photos in the note being edited: tap to view, long-press to remove from the note.
+struct PhotoStrip: View {
+    let paths: [String]
+    var remove: (String) -> Void
+    @State private var viewing: String?
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(paths, id: \.self) { path in
+                    Button { viewing = path } label: {
+                        AttachmentThumbnail(path: path)
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        Button(role: .destructive) { remove(path) } label: {
+                            Label("Remove from note", systemImage: "minus.circle")
+                        }
+                    }
+                    .accessibilityLabel(Text("Photo"))
+                    .accessibilityHint(Text("Opens the photo. Touch and hold to remove it from the note."))
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+        }
+        .background(.bar)
+        .accessibilityIdentifier("photoStrip")
+        .sheet(item: Binding(get: { viewing.map(ViewedPath.init) }, set: { viewing = $0?.id })) { item in
+            NavigationStack {
+                ScrollView {
+                    AttachmentImage(alt: "Photo", path: item.id).padding()
+                }
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) { Button("Done") { viewing = nil } }
+                }
+            }
+        }
+    }
+
+    private struct ViewedPath: Identifiable { let id: String }
+}
+
+struct AttachmentThumbnail: View {
+    @EnvironmentObject private var model: AppModel
+    let path: String
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                Rectangle().fill(.fill.tertiary)
+            }
+        }
+        .frame(width: 52, height: 52)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .task(id: path) {
+            image = await model.image(at: path)?.preparingThumbnail(of: CGSize(width: 104, height: 104))
+        }
     }
 }

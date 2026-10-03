@@ -4,6 +4,7 @@ import SwiftUI
 struct QuickDiaryApp: App {
     @StateObject private var model = AppModel()
     @StateObject private var quickLists = QuickListStore()
+    @StateObject private var ai = AISettings()
     @AppStorage(Appearance.storageKey) private var appearance = Appearance.system
     @AppStorage(LockAfter.storageKey) private var lockAfter = LockAfter.oneMinute
     @Environment(\.scenePhase) private var scenePhase
@@ -13,6 +14,7 @@ struct QuickDiaryApp: App {
             RootView()
                 .environmentObject(model)
                 .environmentObject(quickLists)
+                .environmentObject(ai)
                 .preferredColorScheme(appearance.colorScheme)
                 // Hide notes in the app switcher and while Control Center or a call covers the app.
                 .overlay {

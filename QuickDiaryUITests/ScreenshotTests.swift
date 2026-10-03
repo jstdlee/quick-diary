@@ -107,7 +107,17 @@ final class ScreenshotTests: XCTestCase {
 
         firstNote.tap()
         XCTAssertTrue(app.textViews["editor"].waitForExistence(timeout: 10))
+        // The note's photo shows in the strip above the capture bar.
+        XCTAssertTrue(app.descendants(matching: .any)["photoStrip"].waitForExistence(timeout: 5))
         shot("07-editor")
+
+        // AI summary (demo engine): shown first, inserted only on Insert.
+        app.buttons["aiMenu"].tap()
+        app.buttons["Summarize note"].tap()
+        XCTAssertTrue(app.staticTexts["aiResult"].waitForExistence(timeout: 10))
+        shot("07b-ai-summary")
+        app.buttons["aiInsert"].tap()
+        XCTAssertTrue(wait(for: app.textViews["editor"], toContain: "### Summary"))
 
         app.buttons["Preview"].tap()
         // The encrypted photo decrypts and shows in the preview.
@@ -125,6 +135,24 @@ final class ScreenshotTests: XCTestCase {
         app.buttons["quick-Weather"].tap()
         XCTAssertTrue(wait(for: editor, toContain: "Mood: 🙂 Good"))
         XCTAssertTrue(wait(for: editor, toContain: "Weather: 18°C"))
+
+        // Today: pick a photo, add the facts.
+        app.buttons["quick-Today"].tap()
+        XCTAssertTrue(element(app, labelContaining: "Pay the electricity bill").waitForExistence(timeout: 10))
+        app.buttons["todayPhoto"].firstMatch.tap()
+        shot("09a-today")
+        app.buttons["todayAdd"].tap()
+        XCTAssertTrue(wait(for: editor, toContain: "## Today", timeout: 10))
+        XCTAssertTrue(wait(for: editor, toContain: "- [x] Pay the electricity bill"))
+
+        // Today again: an AI summary of the day.
+        app.buttons["quick-Today"].tap()
+        XCTAssertTrue(app.buttons["todaySummarize"].waitForExistence(timeout: 10))
+        app.buttons["todaySummarize"].tap()
+        XCTAssertTrue(app.staticTexts["aiResult"].waitForExistence(timeout: 10))
+        shot("09b-day-summary")
+        app.buttons["aiInsert"].tap()
+        XCTAssertTrue(wait(for: editor, toContain: "productive day", timeout: 10))
         XCTAssertTrue(element(app, labelContaining: "Saved, encrypted").waitForExistence(timeout: 10))
         shot("09-new-note-capture-bar")
         backToNotes(app)
@@ -148,14 +176,26 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(app.buttons["changePassword"].waitForExistence(timeout: 10))
         shot("12-settings")
 
+        open(app, "quickEntries")
+        XCTAssertTrue(element(app, labelContaining: "Breakfast").waitForExistence(timeout: 10))
+        shot("14-quick-entries")
+        goBack(app, to: "Settings")
+
         open(app, "attachments")
         XCTAssertTrue(element(app, labelContaining: "Used in 1 note").waitForExistence(timeout: 10))
         shot("13-attachments")
         goBack(app, to: "Settings")
 
-        open(app, "quickEntries")
-        XCTAssertTrue(element(app, labelContaining: "Breakfast").waitForExistence(timeout: 10))
-        shot("14-quick-entries")
+        open(app, "aiSettings")
+        XCTAssertTrue(app.descendants(matching: .any)["aiProvider"].waitForExistence(timeout: 10))
+        shot("13b-ai-settings")
+        goBack(app, to: "Settings")
+
+        open(app, "backup")
+        XCTAssertTrue(app.buttons["backupNow"].waitForExistence(timeout: 10))
+        app.buttons["backupNow"].tap()
+        XCTAssertTrue(element(app, labelContaining: "Backed up").waitForExistence(timeout: 20))
+        shot("13c-backup")
         goBack(app, to: "Settings")
 
         open(app, "help")

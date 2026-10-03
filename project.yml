@@ -28,6 +28,9 @@ targets:
         UILaunchScreen: {}
         NSFaceIDUsageDescription: Unlock your notes with Face ID instead of typing your password.
         NSCameraUsageDescription: Take photos and scan documents for your notes. They are encrypted before they are saved.
+        NSRemindersFullAccessUsageDescription: Show the reminders you completed today, so you can add them to a note. Nothing is changed.
+        NSCalendarsFullAccessUsageDescription: Show today's events, so you can add them to a note. Nothing is changed.
+        NSPhotoLibraryUsageDescription: Show photos taken today, so you can add the ones you pick to a note. They are encrypted before they are saved.
         NSLocationWhenInUseUsageDescription: Add the current weather to a note. Your location is rounded to about 1 km and sent to Open-Meteo only when you tap Weather.
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false

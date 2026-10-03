@@ -17,6 +17,7 @@ struct SettingsView: View {
             Form {
                 securitySection
                 captureSection
+                servicesSection
                 storageSection
                 appearanceSection
                 helpSection
@@ -208,6 +209,27 @@ struct SettingsView: View {
             Text("Security")
         } footer: {
             Text("Quick Diary also hides your notes in the app switcher. The key file is protected by your password; keep a backup of it and your recovery key apart from your notes.")
+        }
+    }
+
+    // MARK: AI and backup
+
+    private var servicesSection: some View {
+        Section {
+            NavigationLink {
+                AISettingsView()
+            } label: {
+                Label("AI", systemImage: "sparkles")
+            }
+            .accessibilityIdentifier("aiSettings")
+            NavigationLink {
+                BackupView()
+            } label: {
+                Label("Backup", systemImage: "externaldrive.badge.icloud")
+            }
+            .accessibilityIdentifier("backup")
+        } header: {
+            Text("AI and backup")
         }
     }
 
