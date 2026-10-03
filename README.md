@@ -12,11 +12,23 @@ A small SwiftUI app for iPhone and iPad: encrypted Markdown notes in a folder yo
 - **Change password** — only the key file is rewritten. Notes are not re-encrypted, so it's instant.
 - **Recovery key** — shown once at setup, and again in Settings with your password. It can set a new password if you forget the old one, or if the key file is lost.
 - **Key backup** — Settings › Back up key file exports `quick-diary-key.json`. It is still protected by your password.
-- Locks itself when the app goes to the background.
+- **Quick capture bar** under the editor, in thumb reach:
+  - your own quick-entry menus (Mood, Meal, Sport, or any list of options)
+  - Weather (Open-Meteo)
+  - Photo, Camera
+  - Scan (document camera plus on-device text recognition)
+- **Encrypted attachments** in `assets/`. Deleting a note keeps them. Settings › Attachments lists them largest first and deletes only after you confirm.
+- **Face ID / Touch ID** unlock, **Lock after** 0 / 1 / 5 / 15 minutes, and a cover in the app switcher.
+- **Shortcuts and Siri:**
+  - **New Quick Diary entry**
+  - **Add to Quick Diary.** It works while the app is locked: the text is encrypted at once with the vault's public key and shows in a "From Shortcuts" note after you unlock. Use it to bring in Apple Notes ("Find Notes"), Health ("Find Health Samples") or anything Shortcuts can read.
+- **Recently Deleted** keeps notes for 30 days.
+- **Privacy page.** No servers, no accounts, no analytics. Weather sends a location rounded to about 1 km, and only when you tap it.
 
 ## How the encryption works
 
 ```
+Shortcuts (locked) ──X25519 + HKDF + AES-GCM──▶ inbox/*.qdin ──(private key, sealed by master key)──▶ note at unlock
 password ──PBKDF2-SHA256 (600,000 rounds, random salt)──▶ key-encryption key
                                                            │ AES-256-GCM
 master key (random 256-bit) ◀──────── quick-diary-key.json ┘
@@ -30,6 +42,19 @@ master key (random 256-bit) ◀──────── quick-diary-key.json ┘
 - The key file also stores a 16-byte check value (HMAC of the master key). It lets a recovery key be checked without the password.
 - A folder is a whole vault: the key file sits next to the notes. To move the vault, copy the folder.
 - Switching storage copies the key file and notes to the new place. Nothing is moved or deleted.
+
+## Install on an iPhone without a Mac
+
+Every CI run uploads **QuickDiary-unsigned-ipa**:
+
+```bash
+gh run download -R jstdlee/quick-diary -n QuickDiary-unsigned-ipa
+```
+
+1. Download it with the command above.
+2. Sign and install it with your free Apple ID, using [SideStore](https://sidestore.io), AltStore or Sideloadly.
+
+A free Apple ID has these limits: the app must be re-signed every 7 days, iCloud Drive works only through **Folder…**, and Health works only through the Shortcuts bridge.
 
 ## Build
 

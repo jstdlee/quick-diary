@@ -123,8 +123,8 @@ final class ScreenshotTests: XCTestCase {
         app.buttons["quick-Mood"].tap()
         app.buttons["🙂 Good"].firstMatch.tap()
         app.buttons["quick-Weather"].tap()
-        XCTAssertTrue(element(app, labelContaining: "Mood: 🙂 Good").waitForExistence(timeout: 5))
-        XCTAssertTrue(element(app, labelContaining: "Weather: 18°C").waitForExistence(timeout: 5))
+        XCTAssertTrue(wait(for: editor, toContain: "Mood: 🙂 Good"))
+        XCTAssertTrue(wait(for: editor, toContain: "Weather: 18°C"))
         XCTAssertTrue(element(app, labelContaining: "Saved, encrypted").waitForExistence(timeout: 10))
         shot("09-new-note-capture-bar")
         backToNotes(app)
@@ -187,6 +187,12 @@ final class ScreenshotTests: XCTestCase {
         app.buttons["reveal"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["recoveryKeyText"].waitForExistence(timeout: 15))
         shot("18-recovery-key")
+    }
+
+    /// A text view's content is its value, not its label.
+    private func wait(for textView: XCUIElement, toContain text: String, timeout: TimeInterval = 5) -> Bool {
+        let predicate = NSPredicate(format: "value CONTAINS %@", text)
+        return XCTWaiter().wait(for: [expectation(for: predicate, evaluatedWith: textView)], timeout: timeout) == .completed
     }
 
     /// Scrolls the settings form down until the row is on screen, then opens it.
