@@ -20,34 +20,62 @@ struct NotesListView: View {
         return model.notes.filter { $0.text.localizedCaseInsensitiveContains(query) }
     }
 
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var path: [Route] = []
+
+    private var isCompact: Bool { sizeClass == .compact }
+
     var body: some View {
-        NavigationSplitView(columnVisibility: $columns) {
-            sidebar
-                .navigationTitle("Notes")
-                .searchable(text: $search, prompt: "Search notes")
-                .toolbar { listToolbar }
-        } detail: {
-            switch selection {
-            case let .note(id)?:
-                EditorView(noteID: id).id(id)
-            case let .new(token)?:
-                EditorView(noteID: nil).id(token)
-            case .deleted?:
-                DeletedNotesView()
-            case nil:
-                ContentUnavailableView {
-                    Label("No note selected", systemImage: "note.text")
-                } description: {
-                    Text("Choose a note, or press ⌘N to write a new one.")
+        Group {
+            if isCompact {
+                // iPhone: list → editor.
+                NavigationStack(path: $path) {
+                    listColumn
+                        .navigationDestination(for: Route.self) { detail(for: $0) }
                 }
+            } else {
+                // iPad: list and editor side by side.
+                NavigationSplitView(columnVisibility: $columns) {
+                    listColumn
+                } detail: {
+                    if let selection {
+                        detail(for: selection)
+                    } else {
+                        ContentUnavailableView {
+                            Label("No note selected", systemImage: "note.text")
+                        } description: {
+                            Text("Choose a note, or press ⌘N to write a new one.")
+                        }
+                    }
+                }
+                .navigationSplitViewStyle(.balanced)
             }
         }
-        .navigationSplitViewStyle(.balanced)
         .sheet(isPresented: $showSettings) { SettingsView() }
         .onChange(of: model.notes) { _, notes in
             // The open note was deleted: close it.
             if case let .note(id)? = selection, !notes.contains(where: { $0.id == id }) { selection = nil }
         }
+    }
+
+    private var listColumn: some View {
+        sidebar
+            .navigationTitle("Notes")
+            .searchable(text: $search, prompt: "Search notes")
+            .toolbar { listToolbar }
+    }
+
+    @ViewBuilder private func detail(for route: Route) -> some View {
+        switch route {
+        case let .note(id): EditorView(noteID: id).id(id)
+        case let .new(token): EditorView(noteID: nil).id(token)
+        case .deleted: DeletedNotesView()
+        }
+    }
+
+    private func newNote() {
+        let route = Route.new(UUID())
+        if isCompact { path.append(route) } else { selection = route }
     }
 
     @ViewBuilder private var sidebar: some View {
@@ -60,7 +88,8 @@ struct NotesListView: View {
         } else if filtered.isEmpty && !search.isEmpty {
             ContentUnavailableView.search(text: search)
         } else {
-            List(selection: $selection) {
+            // Selection drives the iPad detail column; on iPhone links push onto the stack.
+            List(selection: isCompact ? .constant(nil) : $selection) {
                 if model.downloading > 0 || model.unreadable > 0 {
                     Section { statusRows }
                 }
@@ -125,7 +154,7 @@ struct NotesListView: View {
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
             Spacer()
-            Button { selection = .new(UUID()) } label: {
+            Button(action: newNote) {
                 Label("New note", systemImage: "square.and.pencil")
             }
             .keyboardShortcut("n", modifiers: .command)

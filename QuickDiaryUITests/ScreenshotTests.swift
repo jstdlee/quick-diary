@@ -157,8 +157,7 @@ final class ScreenshotTests: XCTestCase {
         app.buttons["recoveryKey"].tap()
         type("better-pass", into: app.secureTextFields["revealPassword"])
         app.buttons["reveal"].tap()
-        XCTAssertTrue(app.otherElements["recoveryKeyText"].waitForExistence(timeout: 15)
-                      || element(app, labelContaining: "-").exists)
+        XCTAssertTrue(app.descendants(matching: .any)["recoveryKeyText"].waitForExistence(timeout: 15))
         shot("15-recovery-key")
     }
 

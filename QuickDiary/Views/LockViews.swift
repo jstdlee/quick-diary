@@ -198,7 +198,10 @@ struct UnlockView: View {
                 .accessibilityHidden(true)
             VStack(spacing: 6) {
                 Text("Quick Diary").font(.largeTitle.bold())
-                Text(model.folderDisplay).font(.subheadline).foregroundStyle(.secondary)
+                Text(model.folderDisplay)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
             VStack(spacing: 12) {
                 SecureField("Password", text: $password)

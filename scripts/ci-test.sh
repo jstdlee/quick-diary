@@ -24,9 +24,18 @@ xcodebuild test \
   -resultBundlePath build/Result.xcresult \
   CODE_SIGNING_ALLOWED=NO 2>&1 \
   | tee build/xcodebuild.log \
-  | grep -E --line-buffered '(error:|warning: .*QuickDiary|Test Case|Executed|\*\* )'
+  | grep -iE --line-buffered '(error:|warning: .*QuickDiary|test case .*(passed|failed)|Executed|\*\* )'
 status=${PIPESTATUS[0]}
 set -e
+
+# Failure messages, readable without downloading the result bundle.
+if [ "$status" -ne 0 ] && [ -d build/Result.xcresult ]; then
+  xcrun xcresulttool get test-results summary --path build/Result.xcresult 2>/dev/null \
+    | python3 -c 'import json,sys
+d=json.load(sys.stdin)
+for f in d.get("testFailures", []):
+    print("FAILED", f.get("targetName",""), f.get("testName",""), "::", f.get("failureText",""))' || true
+fi
 
 echo "Screenshots:"
 ls -1 screenshots || true
