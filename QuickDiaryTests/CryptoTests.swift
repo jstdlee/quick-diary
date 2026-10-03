@@ -93,6 +93,37 @@ final class CryptoTests: XCTestCase {
         XCTAssertEqual(try VaultCrypto.decryptNote(note, key: reopened), "still here")
     }
 
+    func testInboxRoundTripWithoutMasterKey() throws {
+        let master = VaultCrypto.newMasterKey()
+        let file = try VaultCrypto.makeKeyFile(masterKey: master, password: "secret1", iterations: rounds)
+        // Sealing needs only the public key (works while locked)…
+        let sealed = try VaultCrypto.sealToInbox(Data("8,214 steps".utf8), publicKey: XCTUnwrap(file.inboxPublicKey))
+        XCTAssertNil(sealed.range(of: Data("steps".utf8)))
+        // …opening needs the master key.
+        let privateKey = try VaultCrypto.inboxPrivateKey(file, master: master)
+        XCTAssertEqual(String(decoding: try VaultCrypto.openInbox(sealed, privateKey: privateKey), as: UTF8.self), "8,214 steps")
+        XCTAssertThrowsError(try VaultCrypto.inboxPrivateKey(file, master: VaultCrypto.newMasterKey()))
+    }
+
+    func testAssetRoundTripAndTamper() throws {
+        let key = VaultCrypto.newMasterKey()
+        let bytes = Data((0..<4096).map { UInt8($0 % 251) })
+        var sealed = try VaultCrypto.encryptAsset(bytes, key: key)
+        XCTAssertEqual(try VaultCrypto.decryptAsset(sealed, key: key), bytes)
+        sealed[sealed.count - 1] ^= 1
+        XCTAssertThrowsError(try VaultCrypto.decryptAsset(sealed, key: key))
+    }
+
+    func testKeyFileWithoutInboxStillDecodes() throws {
+        // Key files written before the inbox existed have no inbox fields.
+        var file = try VaultCrypto.makeKeyFile(masterKey: VaultCrypto.newMasterKey(), password: "secret1", iterations: rounds)
+        file.inboxPublicKey = nil
+        file.inboxPrivateKey = nil
+        let json = try KeyFileIO.encode(file)
+        XCTAssertNil(String(decoding: json, as: UTF8.self).range(of: "inbox"))
+        XCTAssertEqual(try KeyFileIO.decode(json), file)
+    }
+
     func testKeyFileJSONRoundTrip() throws {
         let file = try VaultCrypto.makeKeyFile(masterKey: VaultCrypto.newMasterKey(), password: "secret1", iterations: rounds)
         let json = try KeyFileIO.encode(file)

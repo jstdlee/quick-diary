@@ -13,6 +13,7 @@ struct MarkdownPreview: View {
         case quote(String)
         case code(String)
         case rule
+        case image(alt: String, path: String)
         case paragraph(String)
     }
 
@@ -64,6 +65,14 @@ struct MarkdownPreview: View {
     }
 
     private static func lineBlock(_ line: String) -> Block? {
+        // ![alt](path) on its own line
+        if line.hasPrefix("!["), line.hasSuffix(")"),
+           let close = line.range(of: "]("),
+           close.lowerBound > line.index(line.startIndex, offsetBy: 1) {
+            let alt = String(line[line.index(line.startIndex, offsetBy: 2)..<close.lowerBound])
+            let path = String(line[close.upperBound..<line.index(before: line.endIndex)])
+            if !path.isEmpty { return .image(alt: alt, path: path) }
+        }
         if line.hasPrefix("#") {
             let level = line.prefix(while: { $0 == "#" }).count
             let rest = line.dropFirst(level)
@@ -125,6 +134,8 @@ struct MarkdownPreview: View {
             .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 10))
         case .rule:
             Divider()
+        case let .image(alt, path):
+            AttachmentImage(alt: alt, path: path)
         case let .paragraph(text):
             Text(inline(text))
         }
@@ -134,6 +145,41 @@ struct MarkdownPreview: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             marker.frame(minWidth: 18, alignment: .leading)
             text
+        }
+    }
+}
+
+/// An encrypted attachment, decrypted off the main thread when shown.
+struct AttachmentImage: View {
+    @EnvironmentObject private var model: AppModel
+    let alt: String
+    let path: String
+    @State private var image: UIImage?
+    @State private var missing = false
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .accessibilityLabel(Text(alt.isEmpty ? "Photo" : alt))
+            } else if missing {
+                Label("Attachment not found", systemImage: "photo.badge.exclamationmark")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 80)
+                    .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 12))
+            } else {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.fill.tertiary)
+                    .aspectRatio(4 / 3, contentMode: .fit)
+                    .overlay { ProgressView() }
+            }
+        }
+        .task(id: path) {
+            image = await model.image(at: path)
+            missing = image == nil
         }
     }
 }

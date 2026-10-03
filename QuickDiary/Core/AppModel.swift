@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import SwiftUI
+import UIKit
 
 /// Launch flags used by UI tests and screenshots. Both use a throwaway temp folder.
 struct LaunchOptions {
@@ -50,6 +51,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var folder: URL?
     @Published private(set) var downloading = 0
     @Published private(set) var unreadable = 0
+    /// Face ID / Touch ID can unlock this vault on this device.
+    @Published private(set) var biometricsOn = false
+    /// Set by the "New entry" Shortcut; the notes list opens a new note and clears it.
+    @Published var pendingNewEntry = false
 
     let options: LaunchOptions
     let iterations: Int
@@ -57,6 +62,8 @@ final class AppModel: ObservableObject {
     private var key: SymmetricKey?
     private var keyFile: KeyFile?
     private var scopedURL: URL?
+    private var backgroundedAt: Date?
+    private let imageCache = NSCache<NSString, UIImage>()
     private let defaults = UserDefaults.standard
 
     private enum Keys {
@@ -148,6 +155,7 @@ final class AppModel: ObservableObject {
         key = nil
         notes = []
         keyFile = try KeyFileIO.read(in: url)
+        refreshBiometrics()
         if keyFile != nil {
             phase = .locked
         } else if NoteStore.hasNotes(in: url) {
@@ -205,7 +213,20 @@ final class AppModel: ObservableObject {
         let master = try await Task.detached {
             try VaultCrypto.unwrap(keyFile, password: password)
         }.value
+        didUnlock(master)
+    }
+
+    private func didUnlock(_ master: SymmetricKey) {
         key = master
+        // Vaults made before the inbox existed get inbox keys now.
+        if var file = keyFile, file.inboxPublicKey == nil, let folder {
+            do {
+                try VaultCrypto.addInboxKeys(to: &file, master: master)
+                try KeyFileIO.write(file, in: folder)
+                keyFile = file
+            } catch {}
+        }
+        mergeInbox()
         phase = .unlocked
         reload()
     }
@@ -215,7 +236,83 @@ final class AppModel: ObservableObject {
         key = nil
         notes = []
         deleted = []
+        imageCache.removeAllObjects()
         phase = .locked
+    }
+
+    // MARK: Auto-lock
+
+    func appDidEnterBackground() { backgroundedAt = Date() }
+
+    /// Locks when the app was away at least `lockAfter` seconds (0 = always).
+    func appDidBecomeActive(lockAfter: TimeInterval) {
+        defer { backgroundedAt = nil }
+        guard let since = backgroundedAt, phase == .unlocked, !options.isDemo else { return }
+        if Date().timeIntervalSince(since) >= lockAfter { lock() }
+    }
+
+    // MARK: Face ID / Touch ID
+
+    private var biometricAccount: String? { keyFile.map { $0.check.hex } }
+
+    func refreshBiometrics() {
+        biometricsOn = biometricAccount.map { Biometrics.has(account: $0) } ?? false
+    }
+
+    func setBiometrics(_ on: Bool) throws {
+        guard let account = biometricAccount else { return }
+        if on {
+            guard let key else { throw VaultError.locked }
+            try Biometrics.save(key, account: account)
+        } else {
+            Biometrics.remove(account: account)
+        }
+        refreshBiometrics()
+    }
+
+    func unlockWithBiometrics() async throws {
+        guard let account = biometricAccount, let keyFile else { throw VaultError.locked }
+        let master = try await Biometrics.load(account: account, reason: String(localized: "Unlock your notes"))
+        guard VaultCrypto.matches(master, keyFile) else {
+            Biometrics.remove(account: account)
+            refreshBiometrics()
+            throw VaultError.wrongPassword
+        }
+        didUnlock(master)
+    }
+
+    // MARK: Inbox (Shortcuts while locked)
+
+    static func inboxNoteID(for day: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return "\(formatter.string(from: day))_shortcuts\(NoteStore.suffix)"
+    }
+
+    /// Adds waiting Shortcuts text to one "From Shortcuts" note per day, then removes the inbox files.
+    private func mergeInbox() {
+        guard let folder, let key, let keyFile,
+              let privateKey = try? VaultCrypto.inboxPrivateKey(keyFile, master: key) else { return }
+        let pending = Inbox.pending(folder: folder, privateKey: privateKey)
+        guard !pending.isEmpty else { return }
+        let notesStore = NoteStore(folder: folder, key: key)
+        let byDay = Dictionary(grouping: pending) { Calendar.current.startOfDay(for: $0.item.date) }
+        for (day, entries) in byDay {
+            let id = Self.inboxNoteID(for: day)
+            var text = (try? notesStore.load(id: id).text)
+                ?? "# From Shortcuts · \(day.formatted(.dateTime.month(.abbreviated).day()))\n"
+            for entry in entries {
+                let time = entry.item.date.formatted(date: .omitted, time: .shortened)
+                let body = entry.item.text.replacingOccurrences(of: "\n", with: "\n  ")
+                let source = entry.item.source.isEmpty ? "" : "\(entry.item.source): "
+                text += "\n- \(time) · \(source)\(body)"
+            }
+            do {
+                try notesStore.save(text: text, id: id)
+                for entry in entries { try? FileManager.default.removeItem(at: entry.file) }
+            } catch {}
+        }
     }
 
     /// Only the key file changes: the master key, and so every note, stays the same.
@@ -225,7 +322,13 @@ final class AppModel: ObservableObject {
         let iterations = self.iterations
         let updated = try await Task.detached { () throws -> KeyFile in
             let master = try VaultCrypto.unwrap(keyFile, password: current)
-            return try VaultCrypto.makeKeyFile(masterKey: master, password: new, iterations: iterations)
+            var file = try VaultCrypto.makeKeyFile(masterKey: master, password: new, iterations: iterations)
+            if keyFile.inboxPublicKey != nil {
+                // Same inbox keys: text added from Shortcuts before the change still opens.
+                file.inboxPublicKey = keyFile.inboxPublicKey
+                file.inboxPrivateKey = keyFile.inboxPrivateKey
+            }
+            return file
         }.value
         try KeyFileIO.write(updated, in: folder)
         self.keyFile = updated
@@ -252,14 +355,17 @@ final class AppModel: ObservableObject {
             }
         }
         let iterations = self.iterations
-        let file = try await Task.detached {
+        var file = try await Task.detached {
             try VaultCrypto.makeKeyFile(masterKey: master, password: newPassword, iterations: iterations)
         }.value
+        if let old = keyFile, old.inboxPublicKey != nil {
+            file.inboxPublicKey = old.inboxPublicKey
+            file.inboxPrivateKey = old.inboxPrivateKey
+        }
         try KeyFileIO.write(file, in: folder)
         keyFile = file
-        key = master
-        phase = .unlocked
-        reload()
+        refreshBiometrics()
+        didUnlock(master)
     }
 
     /// Puts a backed-up key file into the current folder. It still needs its password.
@@ -292,7 +398,11 @@ final class AppModel: ObservableObject {
         guard let store else { return }
         let listing = store.list()
         notes = listing.notes
-        deleted = store.listDeleted()
+        // Recently Deleted keeps notes for 30 days.
+        let cutoff = Date().addingTimeInterval(-30 * 24 * 3600)
+        let trash = store.listDeleted()
+        for old in trash where old.modified < cutoff { try? store.purge(id: old.id) }
+        deleted = trash.filter { $0.modified >= cutoff }
         downloading = listing.downloading
         unreadable = listing.unreadable
     }
@@ -323,6 +433,44 @@ final class AppModel: ObservableObject {
     func purgeDeleted(ids: [String]) {
         for id in ids { try? store?.purge(id: id) }
         reload()
+    }
+
+    // MARK: Attachments
+
+    private var assets: AssetStore? {
+        guard let folder, let key else { return nil }
+        return AssetStore(folder: folder, key: key)
+    }
+
+    /// Encrypts and stores the image; returns the Markdown line for the note.
+    func addImage(_ image: UIImage, alt: String = "Photo") throws -> String {
+        guard let assets else { throw VaultError.locked }
+        let path = try assets.add(image)
+        imageCache.setObject(image, forKey: path as NSString)
+        return "![\(alt)](\(path))"
+    }
+
+    func image(at path: String) async -> UIImage? {
+        if let cached = imageCache.object(forKey: path as NSString) { return cached }
+        guard let assets else { return nil }
+        let image = await Task.detached { () -> UIImage? in
+            guard let data = try? assets.data(path) else { return nil }
+            return UIImage(data: data)
+        }.value
+        if let image { imageCache.setObject(image, forKey: path as NSString) }
+        return image
+    }
+
+    func attachments() -> [AssetStore.Info] { assets?.list() ?? [] }
+
+    /// How many notes (including Recently Deleted) link to the attachment.
+    func references(to path: String) -> Int {
+        (notes + deleted).filter { $0.text.contains(path) }.count
+    }
+
+    func deleteAttachment(_ path: String) throws {
+        try assets?.delete(path)
+        imageCache.removeObject(forKey: path as NSString)
     }
 
     // MARK: Storage

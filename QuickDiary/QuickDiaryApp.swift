@@ -3,19 +3,77 @@ import SwiftUI
 @main
 struct QuickDiaryApp: App {
     @StateObject private var model = AppModel()
+    @StateObject private var quickLists = QuickListStore()
     @AppStorage(Appearance.storageKey) private var appearance = Appearance.system
+    @AppStorage(LockAfter.storageKey) private var lockAfter = LockAfter.oneMinute
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(model)
+                .environmentObject(quickLists)
                 .preferredColorScheme(appearance.colorScheme)
-                .task { await model.start() }
-                .onChange(of: scenePhase) { _, phase in
-                    // Lock when the app goes to the background. Editors save on .inactive first.
-                    if phase == .background && !model.options.isDemo { model.lock() }
+                // Hide notes in the app switcher and while Control Center or a call covers the app.
+                .overlay {
+                    if scenePhase != .active && model.phase == .unlocked && !model.options.isDemo {
+                        PrivacyCover()
+                    }
                 }
+                .task {
+                    await model.start()
+                    if IntentRequests.newEntry {
+                        IntentRequests.newEntry = false
+                        model.pendingNewEntry = true
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .quickDiaryNewEntry)) { _ in
+                    IntentRequests.newEntry = false
+                    model.pendingNewEntry = true
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    switch phase {
+                    case .background: model.appDidEnterBackground()
+                    case .active: model.appDidBecomeActive(lockAfter: lockAfter.seconds)
+                    default: break
+                    }
+                }
+        }
+    }
+}
+
+/// Shown over the app when it is not active, so the app switcher shows no notes.
+struct PrivacyCover: View {
+    var body: some View {
+        ZStack {
+            Rectangle().fill(.background)
+            Image(systemName: "lock.fill")
+                .font(.largeTitle)
+                .foregroundStyle(.secondary)
+        }
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
+    }
+}
+
+/// Settings › Lock after.
+enum LockAfter: Int, CaseIterable, Identifiable {
+    case immediately = 0
+    case oneMinute = 60
+    case fiveMinutes = 300
+    case fifteenMinutes = 900
+
+    static let storageKey = "lockAfter"
+
+    var id: Int { rawValue }
+    var seconds: TimeInterval { TimeInterval(rawValue) }
+
+    var title: String {
+        switch self {
+        case .immediately: String(localized: "Immediately")
+        case .oneMinute: String(localized: "After 1 minute")
+        case .fiveMinutes: String(localized: "After 5 minutes")
+        case .fifteenMinutes: String(localized: "After 15 minutes")
         }
     }
 }

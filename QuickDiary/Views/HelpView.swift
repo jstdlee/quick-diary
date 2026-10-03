@@ -21,7 +21,13 @@ struct HelpView: View {
         Concept(icon: "externaldrive", title: "Storage",
                 text: "On this iPhone, iCloud Drive, or any folder in Files. Switching copies notes; nothing is deleted."),
         Concept(icon: "trash", title: "Recently Deleted",
-                text: "Deleted notes stay there, still encrypted, until you delete them permanently."),
+                text: "Deleted notes stay there, still encrypted, for 30 days."),
+        Concept(icon: "list.bullet.rectangle", title: "Quick entries",
+                text: "The menus under the editor: Mood, Meal, Sport, or your own. One tap adds a line."),
+        Concept(icon: "photo.on.rectangle", title: "Attachments",
+                text: "Photos and scans, encrypted in the assets folder. Deleting a note keeps them; delete them in Settings › Attachments."),
+        Concept(icon: "square.stack.3d.up", title: "Shortcuts",
+                text: "\"Add to Quick Diary\" works while the app is locked. Use it to bring in Apple Notes, Health or anything Shortcuts can read. The text shows in a \"From Shortcuts\" note after you unlock."),
     ]
 
     private let markdown: [(source: String, result: String)] = [

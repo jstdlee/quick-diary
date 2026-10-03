@@ -156,6 +156,8 @@ struct NoteStore {
         let target = trash.appendingPathComponent(id)
         if fm.fileExists(atPath: target.path) { try fm.removeItem(at: target) }
         try fm.moveItem(at: folder.appendingPathComponent(id), to: target)
+        // The date in Recently Deleted is the deletion date; it starts the 30 days.
+        try? fm.setAttributes([.modificationDate: Date()], ofItemAtPath: target.path)
     }
 
     func listDeleted() -> [Note] {

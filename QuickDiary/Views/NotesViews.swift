@@ -52,6 +52,8 @@ struct NotesListView: View {
             }
         }
         .sheet(isPresented: $showSettings) { SettingsView() }
+        .onAppear(perform: openPendingEntry)
+        .onChange(of: model.pendingNewEntry) { _, _ in openPendingEntry() }
         .onChange(of: model.notes) { _, notes in
             // The open note was deleted: close it.
             if case let .note(id)? = selection, !notes.contains(where: { $0.id == id }) { selection = nil }
@@ -71,6 +73,13 @@ struct NotesListView: View {
         case let .new(token): EditorView(noteID: nil).id(token)
         case .deleted: DeletedNotesView()
         }
+    }
+
+    /// "New entry" from Shortcuts or Siri.
+    private func openPendingEntry() {
+        guard model.pendingNewEntry else { return }
+        model.pendingNewEntry = false
+        newNote()
     }
 
     private func newNote() {
@@ -351,7 +360,14 @@ struct EditorView: View {
                 Button("Done") { editorFocused = false }
             }
         }
-        .safeAreaInset(edge: .bottom) { statusLine }
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 0) {
+                if mode == .edit {
+                    CaptureBar(append: appendLine, onError: { error = $0 })
+                }
+                statusLine
+            }
+        }
         .sensoryFeedback(.selection, trigger: mode)
         .background {
             // ⇧⌘P switches Edit / Preview with a hardware keyboard.
@@ -415,6 +431,13 @@ struct EditorView: View {
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    /// Adds a whole line (quick entry, weather, photo) at the end of the note.
+    private func appendLine(_ line: String) {
+        if !text.isEmpty && !text.hasSuffix("\n") { text += "\n" }
+        text += line + "\n"
+        error = nil
     }
 
     /// TextEditor has no cursor API before iOS 18, so Markdown markers start a new line at the end.

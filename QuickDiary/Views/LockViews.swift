@@ -157,7 +157,11 @@ struct RecoveryKeyCard: View {
 
             HStack {
                 Button {
-                    UIPasteboard.general.string = key
+                    // This device only (no Universal Clipboard), cleared after a minute.
+                    UIPasteboard.general.setItems([[UTType.plainText.identifier: key]], options: [
+                        .localOnly: true,
+                        .expirationDate: Date().addingTimeInterval(60),
+                    ])
                     copied = true
                     Task {
                         try? await Task.sleep(for: .seconds(2))
@@ -173,6 +177,9 @@ struct RecoveryKeyCard: View {
                 }
             }
             .buttonStyle(.bordered)
+            Text("A copy stays on this device and clears after 1 minute.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -227,6 +234,15 @@ struct UnlockView: View {
                 .controlSize(.large)
                 .disabled(working || password.isEmpty)
                 .accessibilityIdentifier("unlock")
+                if model.biometricsOn {
+                    Button(action: unlockWithBiometrics) {
+                        Label("Unlock with \(Biometrics.name)", systemImage: Biometrics.symbol)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .disabled(working)
+                }
             }
             .frame(maxWidth: 420)
             Button("Forgot password?") { showRestore = true }
@@ -236,8 +252,26 @@ struct UnlockView: View {
         }
         .padding(.horizontal, 24)
         .sensoryFeedback(.error, trigger: failures)
-        .onAppear { focused = true }
+        .onAppear {
+            // Face ID first when it's on; the password stays one tap away.
+            if model.biometricsOn { unlockWithBiometrics() } else { focused = true }
+        }
         .sheet(isPresented: $showRestore) { RestoreView() }
+    }
+
+    private func unlockWithBiometrics() {
+        guard !working else { return }
+        working = true
+        error = nil
+        Task {
+            defer { working = false }
+            do {
+                try await model.unlockWithBiometrics()
+            } catch {
+                // Cancelled or failed: fall back to the password without an alarming message.
+                focused = true
+            }
+        }
     }
 
     private func unlock() {

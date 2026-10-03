@@ -33,6 +33,17 @@ jobs:
           path: screenshots/*.png
           if-no-files-found: warn
 
+      - name: Build unsigned IPA (for sideloading)
+        if: success()
+        run: scripts/build-ipa.sh
+
+      - name: Upload IPA
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuickDiary-unsigned-ipa
+          path: build/QuickDiary-unsigned.ipa
+
       - name: Upload build log and test results
         if: failure()
         uses: actions/upload-artifact@v4

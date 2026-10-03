@@ -83,6 +83,34 @@ final class NoteStoreTests: XCTestCase {
         XCTAssertEqual(try KeyFileIO.read(in: folder), file)
     }
 
+    func testAssetsAreEncryptedAndListedLargestFirst() throws {
+        let assets = AssetStore(folder: folder, key: key)
+        let small = try assets.add(jpeg: Data(repeating: 1, count: 100))
+        let large = try assets.add(jpeg: Data(repeating: 2, count: 5000))
+        XCTAssertTrue(small.hasPrefix("assets/"))
+        XCTAssertEqual(assets.list().map(\.id), [large, small])
+        XCTAssertEqual(try assets.data(small), Data(repeating: 1, count: 100))
+        let raw = try Data(contentsOf: folder.appendingPathComponent(large))
+        XCTAssertNil(raw.range(of: Data(repeating: 2, count: 64)))
+    }
+
+    func testDeletingANoteKeepsItsAttachments() throws {
+        let store = NoteStore(folder: folder, key: key)
+        let assets = AssetStore(folder: folder, key: key)
+        let path = try assets.add(jpeg: Data(repeating: 3, count: 10))
+        let note = try store.save(text: "![Photo](\(path))", id: nil)
+        try store.delete(id: note.id)
+        XCTAssertEqual(assets.list().count, 1)
+        XCTAssertEqual(store.listDeleted().map(\.id), [note.id])
+    }
+
+    func testQuickListLine() {
+        let mood = QuickList.defaults[0]
+        XCTAssertEqual(mood.line(for: "🙂 Good"), "- Mood: 🙂 Good")
+        let decoded = try? JSONDecoder().decode([QuickList].self, from: JSONEncoder().encode(QuickList.defaults))
+        XCTAssertEqual(decoded, QuickList.defaults)
+    }
+
     func testTitleAndPreview() {
         let note = Note(id: "x", text: "\n# Morning run\n\n- 📍 Riverside\n- [x] **Stretch**\n", modified: Date())
         XCTAssertEqual(note.title, "Morning run")
@@ -121,6 +149,13 @@ final class MarkdownTests: XCTestCase {
         ])
     }
 
+    func testImageLine() {
+        XCTAssertEqual(MarkdownPreview.parse("![Sunrise](assets/2026-10-03_0705-1.jpg.enc)"),
+                       [.image(alt: "Sunrise", path: "assets/2026-10-03_0705-1.jpg.enc")])
+        XCTAssertEqual(MarkdownPreview.parse("![](assets/x.jpg.enc)"), [.image(alt: "", path: "assets/x.jpg.enc")])
+        XCTAssertEqual(MarkdownPreview.parse("see ![a](b) inline"), [.paragraph("see ![a](b) inline")])
+    }
+
     func testHashWithoutSpaceIsText() {
         XCTAssertEqual(MarkdownPreview.parse("#hashtag"), [.paragraph("#hashtag")])
     }
@@ -142,14 +177,20 @@ final class AppModelTests: XCTestCase {
 
         try await model.unlock(password: LaunchOptions.demoPassword)
         XCTAssertEqual(model.phase, .unlocked)
-        XCTAssertEqual(model.notes.count, DemoData.notes.count)
-        XCTAssertEqual(model.notes.first?.title, "Morning run")
+        // The two inbox items became one "From Shortcuts" note, newest first.
+        XCTAssertEqual(model.notes.count, DemoData.notes.count + 1)
+        let shortcuts = try XCTUnwrap(model.notes.first)
+        XCTAssertTrue(shortcuts.title.hasPrefix("From Shortcuts"))
+        XCTAssertTrue(shortcuts.text.contains("Health: 8,214 steps"))
+        XCTAssertTrue(shortcuts.text.contains("Apple Notes: Edited"))
+        XCTAssertTrue(model.notes.contains { $0.title == "Morning run" })
+        XCTAssertEqual(model.attachments().count, 2)
 
         try await model.changePassword(current: LaunchOptions.demoPassword, new: "new-pass", confirm: "new-pass")
         let recovery = try await model.recoveryKey(password: "new-pass")
         model.lock()
         try await model.unlock(password: "new-pass")
-        XCTAssertEqual(model.notes.count, DemoData.notes.count)
+        XCTAssertEqual(model.notes.count, DemoData.notes.count + 1)
 
         // Forgot the password: the recovery key sets a new one.
         model.lock()
@@ -157,7 +198,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.phase, .unlocked)
         model.lock()
         try await model.unlock(password: "third-pass")
-        XCTAssertEqual(model.notes.count, DemoData.notes.count)
+        XCTAssertEqual(model.notes.count, DemoData.notes.count + 1)
     }
 
     func testFreshVaultSetup() async throws {

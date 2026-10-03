@@ -59,6 +59,10 @@ struct KeyFile: Codable, Equatable {
     /// lets a recovery key be checked without the password.
     var check: Data
     var created: Date
+    /// Curve25519 public key. Shortcuts can encrypt text to it while the app is locked.
+    var inboxPublicKey: Data?
+    /// The matching private key, sealed with the master key.
+    var inboxPrivateKey: Data?
 }
 
 enum VaultCrypto {
@@ -69,6 +73,11 @@ enum VaultCrypto {
     private static let keyAAD = Data("quick-diary-key-v1".utf8)
     private static let noteAAD = Data("quick-diary-note-v1".utf8)
     private static let checkLabel = Data("quick-diary-check".utf8)
+    private static let inboxKeyAAD = Data("quick-diary-inbox-key-v1".utf8)
+    private static let inboxInfo = Data("quick-diary-inbox-v1".utf8)
+    private static let assetAAD = Data("quick-diary-asset-v1".utf8)
+    static let inboxMagic = Data("QDI1".utf8)
+    static let assetMagic = Data("QDA1".utf8)
 
     static func randomBytes(_ count: Int) -> Data {
         var data = Data(count: count)
@@ -111,10 +120,74 @@ enum VaultCrypto {
         let salt = randomBytes(16)
         let kek = deriveKey(password: password, salt: salt, iterations: iterations)
         let sealed = try AES.GCM.seal(masterKey.rawData, using: kek, authenticating: keyAAD)
-        return KeyFile(iterations: iterations, salt: salt, wrappedKey: sealed.combined!,
-                       check: checkValue(for: masterKey),
-                       // Whole seconds: the JSON (ISO 8601) keeps no fractions.
-                       created: Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down)))
+        var file = KeyFile(iterations: iterations, salt: salt, wrappedKey: sealed.combined!,
+                           check: checkValue(for: masterKey),
+                           // Whole seconds: the JSON (ISO 8601) keeps no fractions.
+                           created: Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down)))
+        try addInboxKeys(to: &file, master: masterKey)
+        return file
+    }
+
+    // MARK: Inbox — Shortcuts add text while the vault is locked
+
+    static func addInboxKeys(to file: inout KeyFile, master: SymmetricKey) throws {
+        let privateKey = Curve25519.KeyAgreement.PrivateKey()
+        file.inboxPublicKey = privateKey.publicKey.rawRepresentation
+        file.inboxPrivateKey = try AES.GCM.seal(privateKey.rawRepresentation, using: master,
+                                                authenticating: inboxKeyAAD).combined
+    }
+
+    static func inboxPrivateKey(_ file: KeyFile, master: SymmetricKey) throws -> Curve25519.KeyAgreement.PrivateKey {
+        guard let sealed = file.inboxPrivateKey else { throw VaultError.badKeyFile }
+        let raw = try AES.GCM.open(AES.GCM.SealedBox(combined: sealed), using: master, authenticating: inboxKeyAAD)
+        return try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: raw)
+    }
+
+    private static func inboxKey(shared: SharedSecret, ephemeral: Data, recipient: Data) -> SymmetricKey {
+        shared.hkdfDerivedSymmetricKey(using: SHA256.self, salt: ephemeral + recipient,
+                                       sharedInfo: inboxInfo, outputByteCount: 32)
+    }
+
+    /// "QDI1" + ephemeral public key (32) + AES-GCM box. Only the vault's private key opens it.
+    static func sealToInbox(_ plaintext: Data, publicKey: Data) throws -> Data {
+        let recipient = try Curve25519.KeyAgreement.PublicKey(rawRepresentation: publicKey)
+        let ephemeral = Curve25519.KeyAgreement.PrivateKey()
+        let shared = try ephemeral.sharedSecretFromKeyAgreement(with: recipient)
+        let key = inboxKey(shared: shared, ephemeral: ephemeral.publicKey.rawRepresentation, recipient: publicKey)
+        let box = try AES.GCM.seal(plaintext, using: key)
+        return inboxMagic + ephemeral.publicKey.rawRepresentation + box.combined!
+    }
+
+    static func openInbox(_ data: Data, privateKey: Curve25519.KeyAgreement.PrivateKey) throws -> Data {
+        let bytes = [UInt8](data)
+        guard bytes.count > 4 + 32, Data(bytes[0..<4]) == inboxMagic else { throw VaultError.badNote }
+        let ephemeralRaw = Data(bytes[4..<36])
+        do {
+            let ephemeral = try Curve25519.KeyAgreement.PublicKey(rawRepresentation: ephemeralRaw)
+            let shared = try privateKey.sharedSecretFromKeyAgreement(with: ephemeral)
+            let key = inboxKey(shared: shared, ephemeral: ephemeralRaw,
+                               recipient: privateKey.publicKey.rawRepresentation)
+            return try AES.GCM.open(AES.GCM.SealedBox(combined: Data(bytes[36...])), using: key)
+        } catch {
+            throw VaultError.badNote
+        }
+    }
+
+    // MARK: Attachments — "QDA1" + AES-256-GCM box of the file bytes
+
+    static func encryptAsset(_ data: Data, key: SymmetricKey) throws -> Data {
+        assetMagic + (try AES.GCM.seal(data, using: key, authenticating: assetAAD).combined!)
+    }
+
+    static func decryptAsset(_ data: Data, key: SymmetricKey) throws -> Data {
+        let bytes = [UInt8](data)
+        guard bytes.count > 4, Data(bytes[0..<4]) == assetMagic else { throw VaultError.badNote }
+        do {
+            return try AES.GCM.open(AES.GCM.SealedBox(combined: Data(bytes[4...])), using: key,
+                                    authenticating: assetAAD)
+        } catch {
+            throw VaultError.badNote
+        }
     }
 
     static func unwrap(_ file: KeyFile, password: String) throws -> SymmetricKey {

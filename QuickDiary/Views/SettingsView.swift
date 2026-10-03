@@ -9,13 +9,16 @@ struct SettingsView: View {
     @State private var storageError: String?
     @State private var backupURL: URL?
     @AppStorage(Appearance.storageKey) private var appearance = Appearance.system
+    @AppStorage(LockAfter.storageKey) private var lockAfter = LockAfter.oneMinute
+    @State private var securityError: String?
 
     var body: some View {
         NavigationStack {
             Form {
-                appearanceSection
-                storageSection
                 securitySection
+                captureSection
+                storageSection
+                appearanceSection
                 helpSection
                 aboutSection
             }
@@ -147,8 +150,37 @@ struct SettingsView: View {
 
     // MARK: Security
 
+    private var biometricsBinding: Binding<Bool> {
+        Binding(
+            get: { model.biometricsOn },
+            set: { on in
+                do {
+                    try model.setBiometrics(on)
+                    securityError = nil
+                } catch {
+                    securityError = String(localized: "\(Biometrics.name) couldn't be turned on. Try again.")
+                }
+            })
+    }
+
     private var securitySection: some View {
         Section {
+            Toggle(isOn: biometricsBinding) {
+                Label("Unlock with \(Biometrics.name)", systemImage: Biometrics.symbol)
+            }
+            .disabled(Biometrics.unavailableReason != nil)
+            .accessibilityIdentifier("biometricsToggle")
+            if let reason = Biometrics.unavailableReason {
+                Text(reason).font(.footnote).foregroundStyle(.secondary)
+            }
+            if let securityError {
+                Label(securityError, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
+            }
+            Picker(selection: $lockAfter) {
+                ForEach(LockAfter.allCases) { Text($0.title).tag($0) }
+            } label: {
+                Label("Lock", systemImage: "lock.rotation")
+            }
             NavigationLink {
                 ChangePasswordView()
             } label: {
@@ -175,7 +207,30 @@ struct SettingsView: View {
         } header: {
             Text("Security")
         } footer: {
-            Text("The key file is protected by your password. Keep a backup of it and your recovery key apart from your notes.")
+            Text("Quick Diary also hides your notes in the app switcher. The key file is protected by your password; keep a backup of it and your recovery key apart from your notes.")
+        }
+    }
+
+    // MARK: Capture
+
+    private var captureSection: some View {
+        Section {
+            NavigationLink {
+                QuickListsView()
+            } label: {
+                Label("Quick entries", systemImage: "list.bullet.rectangle")
+            }
+            .accessibilityIdentifier("quickEntries")
+            NavigationLink {
+                AttachmentsView()
+            } label: {
+                Label("Attachments", systemImage: "photo.on.rectangle")
+            }
+            .accessibilityIdentifier("attachments")
+        } header: {
+            Text("Capture")
+        } footer: {
+            Text("Quick entries are the menus under the editor. Attachments are kept until you delete them here.")
         }
     }
 
@@ -189,6 +244,12 @@ struct SettingsView: View {
                 Label("How Quick Diary works", systemImage: "questionmark.circle")
             }
             .accessibilityIdentifier("help")
+            NavigationLink {
+                PrivacyView()
+            } label: {
+                Label("Privacy", systemImage: "hand.raised")
+            }
+            .accessibilityIdentifier("privacy")
         }
     }
 

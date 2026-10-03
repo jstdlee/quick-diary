@@ -26,6 +26,9 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
+        NSFaceIDUsageDescription: Unlock your notes with Face ID instead of typing your password.
+        NSCameraUsageDescription: Take photos and scan documents for your notes. They are encrypted before they are saved.
+        NSLocationWhenInUseUsageDescription: Add the current weather to a note. Your location is rounded to about 1 km and sent to Open-Meteo only when you tap Weather.
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         # The local vault shows in Files › On My iPhone › Quick Diary.
