@@ -1,0 +1,76 @@
+# XcodeGen spec. CI runs `xcodegen generate` to make QuickDiary.xcodeproj (not committed).
+name: QuickDiary
+options:
+  bundleIdPrefix: com.jstdlee
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: en
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1,2"
+targets:
+  QuickDiary:
+    type: application
+    platform: iOS
+    sources:
+      - path: QuickDiary
+        excludes: ["*.entitlements"]
+    info:
+      path: QuickDiary/Info.plist
+      properties:
+        CFBundleDisplayName: Quick Diary
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        # The local vault shows in Files › On My iPhone › Quick Diary.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        # The iCloud vault shows in iCloud Drive › Quick Diary.
+        NSUbiquitousContainers:
+          iCloud.com.jstdlee.quickdiary:
+            NSUbiquitousContainerIsDocumentScopePublic: true
+            NSUbiquitousContainerName: Quick Diary
+            NSUbiquitousContainerSupportedFolderLevels: Any
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jstdlee.quickdiary
+        # iCloud needs a signed device build with an Apple developer team.
+        # Simulator/CI builds skip the entitlements; the app then offers Local and Folder….
+        CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]: QuickDiary/QuickDiary.entitlements
+  QuickDiaryTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [QuickDiaryTests]
+    dependencies:
+      - target: QuickDiary
+  QuickDiaryUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [QuickDiaryUITests]
+    dependencies:
+      - target: QuickDiary
+schemes:
+  QuickDiary:
+    build:
+      targets:
+        QuickDiary: all
+    test:
+      config: Debug
+      targets:
+        - QuickDiaryTests
+        - QuickDiaryUITests

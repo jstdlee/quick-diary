@@ -1,0 +1,7 @@
+*.xcodeproj/
+QuickDiary/Info.plist
+build/
+screenshots/
+DerivedData/
+.DS_Store
+xcuserdata/

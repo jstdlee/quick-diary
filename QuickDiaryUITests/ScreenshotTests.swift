@@ -1,0 +1,129 @@
+import XCTest
+
+/// Walks through the app with demo data and saves a screenshot of each screen.
+/// Screenshots go to the test results, and to $SCREENSHOT_DIR when it is set
+/// (CI passes TEST_RUNNER_SCREENSHOT_DIR to xcodebuild).
+final class ScreenshotTests: XCTestCase {
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    private func launch(_ arguments: [String]) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = arguments + ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launch()
+        return app
+    }
+
+    private func shot(_ name: String) {
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        if let dir = ProcessInfo.processInfo.environment["SCREENSHOT_DIR"], !dir.isEmpty {
+            let folder = URL(fileURLWithPath: dir, isDirectory: true)
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try? screenshot.pngRepresentation.write(to: folder.appendingPathComponent("\(name).png"))
+        }
+    }
+
+    private func element(_ app: XCUIApplication, labelContaining text: String) -> XCUIElement {
+        app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", text))
+            .firstMatch
+    }
+
+    private func type(_ text: String, into field: XCUIElement) {
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "missing field \(field)")
+        field.tap()
+        field.typeText(text)
+    }
+
+    private func goBack(_ app: XCUIApplication) {
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+    }
+
+    func test1_CreateVault() {
+        let app = launch(["-demoFresh"])
+        XCTAssertTrue(app.secureTextFields["password"].waitForExistence(timeout: 15))
+        shot("01-create-password")
+
+        type("correct-horse", into: app.secureTextFields["password"])
+        type("correct-horse", into: app.secureTextFields["confirm"])
+        app.buttons["create"].tap()
+
+        XCTAssertTrue(app.buttons["savedRecoveryKey"].waitForExistence(timeout: 30))
+        shot("02-recovery-key")
+        app.buttons["savedRecoveryKey"].tap()
+
+        XCTAssertTrue(app.buttons["newNote"].waitForExistence(timeout: 10))
+        shot("03-no-notes")
+    }
+
+    func test2_Tour() {
+        let app = launch(["-demo"])
+        let password = app.secureTextFields["unlockPassword"]
+        XCTAssertTrue(password.waitForExistence(timeout: 15))
+        shot("04-locked")
+
+        // A wrong password shows an error and keeps the app locked.
+        type("not-it", into: password)
+        app.buttons["unlock"].tap()
+        XCTAssertTrue(app.staticTexts["unlockError"].waitForExistence(timeout: 15))
+        shot("05-wrong-password")
+
+        type(LaunchOptions.demoPassword, into: password)
+        app.buttons["unlock"].tap()
+        let firstNote = element(app, labelContaining: "Morning run")
+        XCTAssertTrue(firstNote.waitForExistence(timeout: 15))
+        shot("06-notes")
+
+        firstNote.tap()
+        XCTAssertTrue(app.textViews["editor"].waitForExistence(timeout: 10))
+        shot("07-editor")
+
+        app.buttons["Preview"].tap()
+        XCTAssertTrue(app.otherElements["preview"].waitForExistence(timeout: 5)
+                      || app.scrollViews["preview"].waitForExistence(timeout: 5))
+        shot("08-preview")
+        goBack(app)
+
+        // New note: typed, autosaved, back in the list.
+        XCTAssertTrue(app.buttons["newNote"].waitForExistence(timeout: 10))
+        app.buttons["newNote"].tap()
+        let editor = app.textViews["editor"]
+        type("# Typed by the UI test\n\nHello from **CI**.\n- [ ] check the screenshot", into: editor)
+        XCTAssertTrue(element(app, labelContaining: "Saved, encrypted").waitForExistence(timeout: 10))
+        shot("09-new-note")
+        goBack(app)
+        XCTAssertTrue(element(app, labelContaining: "Typed by the UI test").waitForExistence(timeout: 10))
+        shot("10-notes-after-new")
+
+        // Settings: change the password, then show the recovery key with the new one.
+        app.buttons["settings"].tap()
+        XCTAssertTrue(app.buttons["changePassword"].waitForExistence(timeout: 10))
+        shot("11-settings")
+
+        app.buttons["changePassword"].tap()
+        type(LaunchOptions.demoPassword, into: app.secureTextFields["currentPassword"])
+        type("better-pass", into: app.secureTextFields["newPassword"])
+        type("better-pass", into: app.secureTextFields["confirmPassword"])
+        app.buttons["applyPasswordChange"].tap()
+        XCTAssertTrue(element(app, labelContaining: "Password changed").waitForExistence(timeout: 15))
+        shot("12-password-changed")
+        goBack(app)
+
+        app.buttons["recoveryKey"].tap()
+        type("better-pass", into: app.secureTextFields["revealPassword"])
+        app.buttons["reveal"].tap()
+        XCTAssertTrue(app.otherElements["recoveryKeyText"].waitForExistence(timeout: 15)
+                      || element(app, labelContaining: "-").exists)
+        shot("13-recovery-key")
+    }
+}
+
+/// The demo password, duplicated here because UI tests can't import the app module.
+enum LaunchOptions {
+    static let demoPassword = "demo1234"
+}
