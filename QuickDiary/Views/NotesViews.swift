@@ -88,47 +88,56 @@ struct NotesListView: View {
         } else if filtered.isEmpty && !search.isEmpty {
             ContentUnavailableView.search(text: search)
         } else {
-            // Selection drives the iPad detail column; on iPhone links push onto the stack.
-            List(selection: isCompact ? .constant(nil) : $selection) {
-                if model.downloading > 0 || model.unreadable > 0 {
-                    Section { statusRows }
-                }
-                Section {
-                    ForEach(filtered) { note in
-                        NavigationLink(value: Route.note(note.id)) {
-                            NoteRow(note: note)
-                        }
-                        .swipeActions {
-                            Button(role: .destructive) {
-                                model.delete(id: note.id)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
-                        .contextMenu {
-                            ShareLink(item: note.text) {
-                                Label("Share as text", systemImage: "square.and.arrow.up")
-                            }
-                            Button(role: .destructive) {
-                                model.delete(id: note.id)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
-                    }
-                }
-                if !model.deleted.isEmpty && search.isEmpty {
-                    Section {
-                        NavigationLink(value: Route.deleted) {
-                            Label("Recently Deleted", systemImage: "trash")
-                                .badge(model.deleted.count)
-                        }
-                        .accessibilityIdentifier("recentlyDeleted")
-                    }
+            // A selection-bound list drives the iPad detail column. On iPhone a plain list,
+            // so its links push onto the navigation stack.
+            Group {
+                if isCompact {
+                    List { listRows }
+                } else {
+                    List(selection: $selection) { listRows }
                 }
             }
             .listStyle(.insetGrouped)
             .refreshable { model.reload() }
+        }
+    }
+
+    @ViewBuilder private var listRows: some View {
+        if model.downloading > 0 || model.unreadable > 0 {
+            Section { statusRows }
+        }
+        Section {
+            ForEach(filtered) { note in
+                NavigationLink(value: Route.note(note.id)) {
+                    NoteRow(note: note)
+                }
+                .swipeActions {
+                    Button(role: .destructive) {
+                        model.delete(id: note.id)
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                }
+                .contextMenu {
+                    ShareLink(item: note.text) {
+                        Label("Share as text", systemImage: "square.and.arrow.up")
+                    }
+                    Button(role: .destructive) {
+                        model.delete(id: note.id)
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                }
+            }
+        }
+        if !model.deleted.isEmpty && search.isEmpty {
+            Section {
+                NavigationLink(value: Route.deleted) {
+                    Label("Recently Deleted", systemImage: "trash")
+                        .badge(model.deleted.count)
+                }
+                .accessibilityIdentifier("recentlyDeleted")
+            }
         }
     }
 
