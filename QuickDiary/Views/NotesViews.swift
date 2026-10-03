@@ -1,14 +1,17 @@
 import SwiftUI
 
+/// iPhone: a list that pushes the editor. iPad: list and editor side by side.
 struct NotesListView: View {
     @EnvironmentObject private var model: AppModel
     @State private var search = ""
-    @State private var path: [Route] = []
+    @State private var selection: Route?
+    @State private var columns: NavigationSplitViewVisibility = .all
     @State private var showSettings = false
 
     enum Route: Hashable {
         case note(String)
         case new(UUID)
+        case deleted
     }
 
     private var filtered: [Note] {
@@ -18,83 +21,115 @@ struct NotesListView: View {
     }
 
     var body: some View {
-        NavigationStack(path: $path) {
-            Group {
-                if model.notes.isEmpty {
-                    ContentUnavailableView {
-                        Label("No notes yet", systemImage: "note.text")
-                    } description: {
-                        Text("Tap \(Image(systemName: "square.and.pencil")) to write one. It is encrypted before it is saved.")
-                    }
-                } else if filtered.isEmpty {
-                    ContentUnavailableView.search(text: search)
-                } else {
-                    List {
-                        if model.downloading > 0 || model.unreadable > 0 {
-                            Section { statusRows }
+        NavigationSplitView(columnVisibility: $columns) {
+            sidebar
+                .navigationTitle("Notes")
+                .searchable(text: $search, prompt: "Search notes")
+                .toolbar { listToolbar }
+        } detail: {
+            switch selection {
+            case let .note(id)?:
+                EditorView(noteID: id).id(id)
+            case let .new(token)?:
+                EditorView(noteID: nil).id(token)
+            case .deleted?:
+                DeletedNotesView()
+            case nil:
+                ContentUnavailableView {
+                    Label("No note selected", systemImage: "note.text")
+                } description: {
+                    Text("Choose a note, or press ⌘N to write a new one.")
+                }
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
+        .sheet(isPresented: $showSettings) { SettingsView() }
+        .onChange(of: model.notes) { _, notes in
+            // The open note was deleted: close it.
+            if case let .note(id)? = selection, !notes.contains(where: { $0.id == id }) { selection = nil }
+        }
+    }
+
+    @ViewBuilder private var sidebar: some View {
+        if model.notes.isEmpty && model.deleted.isEmpty {
+            ContentUnavailableView {
+                Label("No notes yet", systemImage: "note.text")
+            } description: {
+                Text("Tap \(Image(systemName: "square.and.pencil")) to write one. It is encrypted before it is saved.")
+            }
+        } else if filtered.isEmpty && !search.isEmpty {
+            ContentUnavailableView.search(text: search)
+        } else {
+            List(selection: $selection) {
+                if model.downloading > 0 || model.unreadable > 0 {
+                    Section { statusRows }
+                }
+                Section {
+                    ForEach(filtered) { note in
+                        NavigationLink(value: Route.note(note.id)) {
+                            NoteRow(note: note)
                         }
-                        ForEach(filtered) { note in
-                            NavigationLink(value: Route.note(note.id)) {
-                                NoteRow(note: note)
+                        .swipeActions {
+                            Button(role: .destructive) {
+                                model.delete(id: note.id)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
                             }
-                            .swipeActions {
-                                Button(role: .destructive) {
-                                    model.delete(id: note.id)
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
+                        }
+                        .contextMenu {
+                            ShareLink(item: note.text) {
+                                Label("Share as text", systemImage: "square.and.arrow.up")
                             }
-                            .contextMenu {
-                                ShareLink(item: note.text) {
-                                    Label("Share as text", systemImage: "square.and.arrow.up")
-                                }
-                                Button(role: .destructive) {
-                                    model.delete(id: note.id)
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
+                            Button(role: .destructive) {
+                                model.delete(id: note.id)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
                             }
                         }
                     }
-                    .listStyle(.insetGrouped)
-                    .refreshable { model.reload() }
+                }
+                if !model.deleted.isEmpty && search.isEmpty {
+                    Section {
+                        NavigationLink(value: Route.deleted) {
+                            Label("Recently Deleted", systemImage: "trash")
+                                .badge(model.deleted.count)
+                        }
+                        .accessibilityIdentifier("recentlyDeleted")
+                    }
                 }
             }
-            .navigationTitle("Notes")
-            .searchable(text: $search, prompt: "Search notes")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { model.lock() } label: {
-                        Label("Lock", systemImage: "lock")
-                    }
-                    .accessibilityIdentifier("lock")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showSettings = true } label: {
-                        Label("Settings", systemImage: "gearshape")
-                    }
-                    .accessibilityIdentifier("settings")
-                }
-                ToolbarItemGroup(placement: .bottomBar) {
-                    Spacer()
-                    Text(verbatim: model.notes.count == 1 ? "1 note" : "\(model.notes.count) notes")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                    Spacer()
-                    Button { path.append(.new(UUID())) } label: {
-                        Label("New note", systemImage: "square.and.pencil")
-                    }
-                    .accessibilityIdentifier("newNote")
-                }
+            .listStyle(.insetGrouped)
+            .refreshable { model.reload() }
+        }
+    }
+
+    @ToolbarContentBuilder private var listToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button { model.lock() } label: {
+                Label("Lock", systemImage: "lock")
             }
-            .navigationDestination(for: Route.self) { route in
-                switch route {
-                case let .note(id): EditorView(noteID: id)
-                case .new: EditorView(noteID: nil)
-                }
+            .keyboardShortcut("l", modifiers: .command)
+            .accessibilityIdentifier("lock")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button { showSettings = true } label: {
+                Label("Settings", systemImage: "gearshape")
             }
-            .sheet(isPresented: $showSettings) { SettingsView() }
+            .keyboardShortcut(",", modifiers: .command)
+            .accessibilityIdentifier("settings")
+        }
+        ToolbarItemGroup(placement: .bottomBar) {
+            Spacer()
+            Text(verbatim: model.notes.count == 1 ? "1 note" : "\(model.notes.count) notes")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+            Spacer()
+            Button { selection = .new(UUID()) } label: {
+                Label("New note", systemImage: "square.and.pencil")
+            }
+            .keyboardShortcut("n", modifiers: .command)
+            .accessibilityIdentifier("newNote")
         }
     }
 
@@ -107,6 +142,92 @@ struct NotesListView: View {
             Label("\(model.unreadable) notes can't be opened with this key", systemImage: "exclamationmark.triangle")
                 .foregroundStyle(.orange)
         }
+    }
+}
+
+/// Deleted notes stay encrypted in the vault's "Recently Deleted" folder until removed here.
+struct DeletedNotesView: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var confirmPurge: [String]?
+
+    var body: some View {
+        Group {
+            if model.deleted.isEmpty {
+                ContentUnavailableView {
+                    Label("Nothing deleted", systemImage: "trash")
+                } description: {
+                    Text("Deleted notes stay here until you delete them permanently.")
+                }
+            } else {
+                List {
+                    Section {
+                        ForEach(model.deleted) { note in
+                            NoteRow(note: note)
+                                .swipeActions(edge: .leading) {
+                                    Button {
+                                        model.restoreDeleted(id: note.id)
+                                    } label: {
+                                        Label("Restore", systemImage: "arrow.uturn.backward")
+                                    }
+                                    .tint(.accentColor)
+                                }
+                                .swipeActions(edge: .trailing) {
+                                    Button(role: .destructive) {
+                                        confirmPurge = [note.id]
+                                    } label: {
+                                        Label("Delete permanently", systemImage: "trash.slash")
+                                    }
+                                }
+                                .contextMenu {
+                                    Button { model.restoreDeleted(id: note.id) } label: {
+                                        Label("Restore", systemImage: "arrow.uturn.backward")
+                                    }
+                                    Button(role: .destructive) { confirmPurge = [note.id] } label: {
+                                        Label("Delete permanently", systemImage: "trash.slash")
+                                    }
+                                }
+                        }
+                    } footer: {
+                        Text("Swipe right to restore a note, left to delete it permanently.")
+                    }
+                }
+                .listStyle(.insetGrouped)
+            }
+        }
+        .navigationTitle("Recently Deleted")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if !model.deleted.isEmpty {
+                ToolbarItem(placement: .bottomBar) {
+                    Button("Delete All", role: .destructive) {
+                        confirmPurge = model.deleted.map(\.id)
+                    }
+                }
+            }
+        }
+        .confirmationDialog(
+            purgeTitle,
+            isPresented: Binding(get: { confirmPurge != nil }, set: { if !$0 { confirmPurge = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button(purgeButton, role: .destructive) {
+                if let ids = confirmPurge { model.purgeDeleted(ids: ids) }
+            }
+        } message: {
+            Text("This can't be undone.")
+        }
+    }
+
+    private var purgeTitle: String {
+        (confirmPurge?.count ?? 0) == 1
+            ? String(localized: "Delete this note permanently?")
+            : String(localized: "Delete \(confirmPurge?.count ?? 0) notes permanently?")
+    }
+
+    private var purgeButton: String {
+        (confirmPurge?.count ?? 0) == 1
+            ? String(localized: "Delete Note")
+            : String(localized: "Delete \(confirmPurge?.count ?? 0) Notes")
     }
 }
 
@@ -129,6 +250,7 @@ struct NoteRow: View {
                 .foregroundStyle(.tertiary)
         }
         .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -192,6 +314,15 @@ struct EditorView: View {
             }
         }
         .safeAreaInset(edge: .bottom) { statusLine }
+        .sensoryFeedback(.selection, trigger: mode)
+        .background {
+            // ⇧⌘P switches Edit / Preview with a hardware keyboard.
+            Button("Toggle preview") { mode = mode == .edit ? .preview : .edit }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+        }
         .onAppear(perform: load)
         .onDisappear(perform: save)
         .onChange(of: scenePhase) { _, phase in

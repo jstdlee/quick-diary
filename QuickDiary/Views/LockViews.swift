@@ -134,6 +134,7 @@ struct RecoveryKeySheet: View {
 
 struct RecoveryKeyCard: View {
     let key: String
+    @State private var copied = false
 
     private var rows: [String] {
         let groups = key.split(separator: "-").map(String.init)
@@ -157,9 +158,16 @@ struct RecoveryKeyCard: View {
             HStack {
                 Button {
                     UIPasteboard.general.string = key
+                    copied = true
+                    Task {
+                        try? await Task.sleep(for: .seconds(2))
+                        copied = false
+                    }
                 } label: {
-                    Label("Copy", systemImage: "doc.on.doc")
+                    Label(copied ? String(localized: "Copied") : String(localized: "Copy"), systemImage: copied ? "checkmark" : "doc.on.doc")
+                        .contentTransition(.symbolEffect(.replace))
                 }
+                .sensoryFeedback(.success, trigger: copied) { _, new in new }
                 ShareLink(item: key) {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
@@ -177,13 +185,15 @@ struct UnlockView: View {
     @State private var error: String?
     @State private var working = false
     @State private var showRestore = false
+    @State private var failures = 0
     @FocusState private var focused: Bool
+    @ScaledMetric(relativeTo: .largeTitle) private var iconSize = 44
 
     var body: some View {
         VStack(spacing: 24) {
             Spacer()
             Image(systemName: "lock.fill")
-                .font(.system(size: 44))
+                .font(.system(size: iconSize))
                 .foregroundStyle(.tint)
                 .accessibilityHidden(true)
             VStack(spacing: 6) {
@@ -221,6 +231,7 @@ struct UnlockView: View {
             Spacer()
         }
         .padding(.horizontal, 24)
+        .sensoryFeedback(.error, trigger: failures)
         .onAppear { focused = true }
         .sheet(isPresented: $showRestore) { RestoreView() }
     }
@@ -235,6 +246,7 @@ struct UnlockView: View {
                 try await model.unlock(password: password)
             } catch {
                 self.error = error.localizedDescription
+                failures += 1
                 password = ""
             }
         }

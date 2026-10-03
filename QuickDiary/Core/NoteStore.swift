@@ -143,8 +143,43 @@ struct NoteStore {
         return Note(id: id, text: text, modified: now)
     }
 
+    // MARK: Recently Deleted — a subfolder; notes stay encrypted there
+
+    static let trashName = "Recently Deleted"
+
+    var trash: URL { folder.appendingPathComponent(Self.trashName, isDirectory: true) }
+
+    /// Moves the note to Recently Deleted. It can be restored.
     func delete(id: String) throws {
-        try FileManager.default.removeItem(at: folder.appendingPathComponent(id))
+        let fm = FileManager.default
+        try fm.createDirectory(at: trash, withIntermediateDirectories: true)
+        let target = trash.appendingPathComponent(id)
+        if fm.fileExists(atPath: target.path) { try fm.removeItem(at: target) }
+        try fm.moveItem(at: folder.appendingPathComponent(id), to: target)
+    }
+
+    func listDeleted() -> [Note] {
+        NoteStore(folder: trash, key: key).list().notes
+    }
+
+    /// Moves a deleted note back. Returns its id (a new one if the name is taken again).
+    @discardableResult
+    func restore(id: String) throws -> String {
+        var name = id
+        if FileManager.default.fileExists(atPath: folder.appendingPathComponent(id).path) {
+            let base = String(id.dropLast(Self.suffix.count))
+            var n = 2
+            repeat { name = "\(base)-\(n)\(Self.suffix)"; n += 1 }
+            while FileManager.default.fileExists(atPath: folder.appendingPathComponent(name).path)
+        }
+        try FileManager.default.moveItem(at: trash.appendingPathComponent(id),
+                                         to: folder.appendingPathComponent(name))
+        return name
+    }
+
+    /// Removes a deleted note for good.
+    func purge(id: String) throws {
+        try FileManager.default.removeItem(at: trash.appendingPathComponent(id))
     }
 
     /// True when the key opens at least one note (or there are none to test).

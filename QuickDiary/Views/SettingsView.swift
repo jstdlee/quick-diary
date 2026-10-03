@@ -8,12 +8,15 @@ struct SettingsView: View {
     @State private var plan: StoragePlan?
     @State private var storageError: String?
     @State private var backupURL: URL?
+    @AppStorage(Appearance.storageKey) private var appearance = Appearance.system
 
     var body: some View {
         NavigationStack {
             Form {
+                appearanceSection
                 storageSection
                 securitySection
+                helpSection
                 aboutSection
             }
             .navigationTitle("Settings")
@@ -39,6 +42,23 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: Appearance
+
+    private var appearanceSection: some View {
+        Section {
+            Picker("Appearance", selection: $appearance) {
+                ForEach(Appearance.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets())
+            .accessibilityIdentifier("appearancePicker")
+        } header: {
+            Text("Appearance")
+        }
+        .sensoryFeedback(.selection, trigger: appearance)
+    }
+
     // MARK: Storage
 
     private var storageSection: some View {
@@ -57,8 +77,15 @@ struct SettingsView: View {
             if model.storage == .folder {
                 Button("Choose another folder…") { pickingFolder = true }
             }
+            if model.copying {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("Copying notes…").foregroundStyle(.secondary)
+                }
+            }
             if let storageError {
-                Text(storageError).foregroundStyle(.red)
+                Label(storageError, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
             }
         } header: {
             Text("Storage")
@@ -108,11 +135,13 @@ struct SettingsView: View {
     }
 
     private func apply(_ plan: StoragePlan) {
-        do {
-            try model.apply(plan)
-            backupURL = try? model.keyBackupURL()
-        } catch {
-            storageError = error.localizedDescription
+        Task {
+            do {
+                try await model.apply(plan)
+                backupURL = try? model.keyBackupURL()
+            } catch {
+                storageError = error.localizedDescription
+            }
         }
     }
 
@@ -147,6 +176,19 @@ struct SettingsView: View {
             Text("Security")
         } footer: {
             Text("The key file is protected by your password. Keep a backup of it and your recovery key apart from your notes.")
+        }
+    }
+
+    // MARK: Help
+
+    private var helpSection: some View {
+        Section {
+            NavigationLink {
+                HelpView()
+            } label: {
+                Label("How Quick Diary works", systemImage: "questionmark.circle")
+            }
+            .accessibilityIdentifier("help")
         }
     }
 
@@ -209,6 +251,7 @@ struct ChangePasswordView: View {
         }
         .navigationTitle("Change password")
         .navigationBarTitleDisplayMode(.inline)
+        .sensoryFeedback(.success, trigger: done) { _, new in new }
     }
 
     private func change() {

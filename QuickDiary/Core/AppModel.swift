@@ -43,6 +43,9 @@ final class AppModel: ObservableObject {
 
     @Published private(set) var phase: Phase = .loading
     @Published private(set) var notes: [Note] = []
+    @Published private(set) var deleted: [Note] = []
+    /// True while notes are copied to a new storage place.
+    @Published private(set) var copying = false
     @Published private(set) var storage: StorageKind = .local
     @Published private(set) var folder: URL?
     @Published private(set) var downloading = 0
@@ -211,6 +214,7 @@ final class AppModel: ObservableObject {
         guard keyFile != nil else { return }
         key = nil
         notes = []
+        deleted = []
         phase = .locked
     }
 
@@ -288,6 +292,7 @@ final class AppModel: ObservableObject {
         guard let store else { return }
         let listing = store.list()
         notes = listing.notes
+        deleted = store.listDeleted()
         downloading = listing.downloading
         unreadable = listing.unreadable
     }
@@ -307,7 +312,17 @@ final class AppModel: ObservableObject {
 
     func delete(id: String) {
         try? store?.delete(id: id)
-        notes.removeAll { $0.id == id }
+        reload()
+    }
+
+    func restoreDeleted(id: String) {
+        try? store?.restore(id: id)
+        reload()
+    }
+
+    func purgeDeleted(ids: [String]) {
+        for id in ids { try? store?.purge(id: id) }
+        reload()
     }
 
     // MARK: Storage
@@ -337,7 +352,7 @@ final class AppModel: ObservableObject {
 
     /// Copies the vault (key file + notes) when the destination is empty; otherwise opens
     /// the destination's own vault, locked. Notes in the old place are never deleted.
-    func apply(_ plan: StoragePlan) throws {
+    func apply(_ plan: StoragePlan) async throws {
         let oldFolder = folder
         let oldScoped = scopedURL
         var destination = plan.folder
@@ -354,9 +369,13 @@ final class AppModel: ObservableObject {
         }
 
         if !plan.hasVault, let oldFolder, let keyFile, oldFolder != destination {
+            copying = true
+            defer { copying = false }
             try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
             try KeyFileIO.write(keyFile, in: destination)
-            try NoteStore.copyNotes(from: oldFolder, to: destination)
+            try await Task.detached {
+                try NoteStore.copyNotes(from: oldFolder, to: destination)
+            }.value
             remember(plan)
             folder = destination
             if key != nil { reload() } else { phase = .locked }
@@ -369,7 +388,7 @@ final class AppModel: ObservableObject {
     /// From the folder-problem screen: go back to the folder on this iPhone.
     func useLocalStorage() async {
         do {
-            try apply(try await plan(for: .local))
+            try await apply(try await plan(for: .local))
         } catch {
             phase = .folderProblem(error.localizedDescription)
         }

@@ -7,7 +7,8 @@ cd "$(dirname "$0")/.."
 command -v xcodegen >/dev/null || brew install xcodegen
 xcodegen generate
 
-UDID=$(python3 scripts/pick-simulator.py)
+IPHONE=$(python3 scripts/pick-simulator.py iphone)
+IPAD=$(python3 scripts/pick-simulator.py ipad)
 rm -rf screenshots build/Result.xcresult
 mkdir -p screenshots build
 
@@ -18,7 +19,8 @@ set +e
 xcodebuild test \
   -project QuickDiary.xcodeproj \
   -scheme QuickDiary \
-  -destination "id=$UDID" \
+  -destination "id=$IPHONE" \
+  -destination "id=$IPAD" \
   -resultBundlePath build/Result.xcresult \
   CODE_SIGNING_ALLOWED=NO 2>&1 \
   | tee build/xcodebuild.log \

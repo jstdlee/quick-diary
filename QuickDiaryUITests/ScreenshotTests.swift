@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 /// Walks through the app with demo data and saves a screenshot of each screen.
@@ -15,7 +16,10 @@ final class ScreenshotTests: XCTestCase {
         return app
     }
 
+    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+
     private func shot(_ name: String) {
+        let name = "\(isPad ? "ipad" : "iphone")-\(name)"
         let screenshot = XCUIScreen.main.screenshot()
         let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name
@@ -50,6 +54,11 @@ final class ScreenshotTests: XCTestCase {
 
     /// Taps the visible back button. Several navigation bars can be in the tree
     /// (a sheet over the list), so find it by its title.
+    /// Back to the notes list. On iPad the list stays on screen, so there is no back button.
+    private func backToNotes(_ app: XCUIApplication) {
+        if !isPad { goBack(app, to: "Notes") }
+    }
+
     private func goBack(_ app: XCUIApplication, to title: String) {
         // The list's gear button is also labelled "Settings", so take the hittable one.
         let matches = app.navigationBars.buttons.matching(NSPredicate(format: "label == %@", title))
@@ -101,7 +110,7 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(app.otherElements["preview"].waitForExistence(timeout: 5)
                       || app.scrollViews["preview"].waitForExistence(timeout: 5))
         shot("08-preview")
-        goBack(app, to: "Notes")
+        backToNotes(app)
 
         // New note: typed, autosaved, back in the list.
         XCTAssertTrue(app.buttons["newNote"].waitForExistence(timeout: 10))
@@ -110,14 +119,31 @@ final class ScreenshotTests: XCTestCase {
         type("# Typed by the UI test\n\nHello from **CI**.\n- [ ] check the screenshot", into: editor)
         XCTAssertTrue(element(app, labelContaining: "Saved, encrypted").waitForExistence(timeout: 10))
         shot("09-new-note")
-        goBack(app, to: "Notes")
+        backToNotes(app)
         XCTAssertTrue(element(app, labelContaining: "Typed by the UI test").waitForExistence(timeout: 10))
         shot("10-notes-after-new")
+
+        // Delete goes to Recently Deleted, not away for good.
+        let weekend = element(app, labelContaining: "Weekend plan")
+        XCTAssertTrue(weekend.waitForExistence(timeout: 5))
+        weekend.swipeLeft()
+        app.buttons["Delete"].firstMatch.tap()
+        let deletedRow = element(app, labelContaining: "Recently Deleted")
+        XCTAssertTrue(deletedRow.waitForExistence(timeout: 10))
+        deletedRow.tap()
+        XCTAssertTrue(element(app, labelContaining: "Weekend plan").waitForExistence(timeout: 10))
+        shot("11-recently-deleted")
+        backToNotes(app)
 
         // Settings: change the password, then show the recovery key with the new one.
         app.buttons["settings"].tap()
         XCTAssertTrue(app.buttons["changePassword"].waitForExistence(timeout: 10))
-        shot("11-settings")
+        shot("12-settings")
+
+        app.buttons["help"].tap()
+        XCTAssertTrue(element(app, labelContaining: "Recovery key").waitForExistence(timeout: 10))
+        shot("13-help")
+        goBack(app, to: "Settings")
 
         app.buttons["changePassword"].tap()
         type(LaunchOptions.demoPassword, into: app.secureTextFields["currentPassword"])
@@ -125,7 +151,7 @@ final class ScreenshotTests: XCTestCase {
         type("better-pass", into: app.secureTextFields["confirmPassword"])
         app.buttons["applyPasswordChange"].tap()
         XCTAssertTrue(element(app, labelContaining: "Password changed").waitForExistence(timeout: 15))
-        shot("12-password-changed")
+        shot("14-password-changed")
         goBack(app, to: "Settings")
 
         app.buttons["recoveryKey"].tap()
@@ -133,7 +159,23 @@ final class ScreenshotTests: XCTestCase {
         app.buttons["reveal"].tap()
         XCTAssertTrue(app.otherElements["recoveryKeyText"].waitForExistence(timeout: 15)
                       || element(app, labelContaining: "-").exists)
-        shot("13-recovery-key")
+        shot("15-recovery-key")
+    }
+
+    func test3_DarkAndLargeText() {
+        let app = launch(["-demo", "-appearance", "dark",
+                          "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"])
+        let password = app.secureTextFields["unlockPassword"]
+        XCTAssertTrue(password.waitForExistence(timeout: 15))
+        shot("20-dark-large-locked")
+        type(LaunchOptions.demoPassword, into: password)
+        app.buttons["unlock"].tap()
+        let firstNote = element(app, labelContaining: "Morning run")
+        XCTAssertTrue(firstNote.waitForExistence(timeout: 15))
+        shot("21-dark-large-notes")
+        firstNote.tap()
+        app.buttons["Preview"].tap()
+        shot("22-dark-large-preview")
     }
 }
 
