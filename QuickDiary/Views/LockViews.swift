@@ -202,6 +202,7 @@ struct UnlockView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             VStack(spacing: 12) {
                 SecureField("Password", text: $password)
