@@ -171,6 +171,7 @@ struct NotesListView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
+                .fixedSize()  // iOS 26 glass toolbar items otherwise truncate it
             Spacer()
             Button(action: newNote) {
                 Label("New note", systemImage: "square.and.pencil")
