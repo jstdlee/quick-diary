@@ -250,13 +250,18 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(element.waitForExistence(timeout: 5), "not found: \(element)")
     }
 
-    /// Scrolls the settings form down until the row is on screen, then opens it.
-    /// (Only down: a swipe down at the top would close the sheet.)
+    /// Opens a Settings row. Reopens Settings first so the list starts at the top,
+    /// then scrolls down slowly (a fast swipe can skip past a row, and off-screen rows aren't loaded).
     private func open(_ app: XCUIApplication, _ identifier: String) {
+        if app.buttons["Done"].exists {
+            app.buttons["Done"].tap()
+            app.buttons["settings"].tap()
+            XCTAssertTrue(app.buttons["changePassword"].waitForExistence(timeout: 10))
+        }
         let row = app.buttons[identifier]
         var tries = 0
-        while !(row.exists && row.isHittable) && tries < 6 {
-            app.swipeUp()
+        while !(row.exists && row.isHittable) && tries < 10 {
+            app.swipeUp(velocity: .slow)
             tries += 1
         }
         row.tap()
