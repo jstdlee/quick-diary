@@ -168,10 +168,9 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(weekend.waitForExistence(timeout: 5))
         weekend.swipeLeft()
         app.buttons["Delete"].firstMatch.tap()
-        let deletedRow = element(app, labelContaining: "Recently Deleted")
-        // It's the last row: scroll to it on a phone.
-        if !deletedRow.waitForExistence(timeout: 3) { app.swipeUp() }
-        XCTAssertTrue(deletedRow.waitForExistence(timeout: 10))
+        // It's the last row: on a phone, scroll until it is clear of the floating bottom toolbar.
+        let deletedRow = app.descendants(matching: .any)["recentlyDeleted"].firstMatch
+        scrollIntoView(deletedRow, in: app)
         deletedRow.tap()
         XCTAssertTrue(element(app, labelContaining: "Weekend plan").waitForExistence(timeout: 10))
         shot("11-recently-deleted")
@@ -239,6 +238,16 @@ final class ScreenshotTests: XCTestCase {
     private func wait(for textView: XCUIElement, toContain text: String, timeout: TimeInterval = 5) -> Bool {
         let predicate = NSPredicate(format: "value CONTAINS %@", text)
         return XCTWaiter().wait(for: [expectation(for: predicate, evaluatedWith: textView)], timeout: timeout) == .completed
+    }
+
+    /// Swipes up until the element is on screen and above the bottom toolbar area.
+    private func scrollIntoView(_ element: XCUIElement, in app: XCUIApplication) {
+        let limit = app.frame.maxY - 140
+        for _ in 0..<5 {
+            if element.exists && element.isHittable && element.frame.maxY < limit { return }
+            app.swipeUp()
+        }
+        XCTAssertTrue(element.waitForExistence(timeout: 5), "not found: \(element)")
     }
 
     /// Scrolls the settings form down until the row is on screen, then opens it.
