@@ -52,6 +52,9 @@ struct NotesListView: View {
             }
         }
         .sheet(isPresented: $showSettings) { SettingsView() }
+        .sheet(isPresented: Binding(get: { model.pendingQuickEntry }, set: { model.pendingQuickEntry = $0 })) {
+            QuickEntrySheet()
+        }
         .onAppear(perform: openPendingEntry)
         .onChange(of: model.pendingNewEntry) { _, _ in openPendingEntry() }
         .onChange(of: model.notes) { _, notes in
@@ -374,14 +377,6 @@ struct EditorView: View {
                 }
                 .disabled(text.isEmpty)
             }
-            ToolbarItemGroup(placement: .keyboard) {
-                Button { insertLine("# ") } label: { Label("Heading", systemImage: "number") }
-                Button { insertLine("- ") } label: { Label("List", systemImage: "list.bullet") }
-                Button { insertLine("- [ ] ") } label: { Label("Checkbox", systemImage: "checklist") }
-                Button { insertLine("> ") } label: { Label("Quote", systemImage: "text.quote") }
-                Spacer()
-                Button("Done") { editorFocused = false }
-            }
         }
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
@@ -389,7 +384,8 @@ struct EditorView: View {
                     if !imagePaths.isEmpty {
                         PhotoStrip(paths: imagePaths, remove: removeImageLine)
                     }
-                    CaptureBar(append: appendLine, onError: { error = $0 })
+                    CaptureBar(insertMarker: insertLine, append: appendLine, onError: { error = $0 },
+                               editorFocused: $editorFocused)
                 }
                 statusLine
             }

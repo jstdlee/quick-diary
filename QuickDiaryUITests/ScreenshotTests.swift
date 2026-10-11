@@ -111,6 +111,25 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["photoStrip"].waitForExistence(timeout: 5))
         shot("07-editor")
 
+        // One editor bar only, riding on the keyboard: Format and Insert menus.
+        app.textViews["editor"].tap()
+        dismissKeyboardTip()
+        XCTAssertTrue(app.buttons["bar-done"].waitForExistence(timeout: 5))
+        shot("07c-editor-bar")
+        app.buttons["bar-format"].tap()
+        XCTAssertTrue(app.buttons["Heading"].waitForExistence(timeout: 5))
+        shot("07d-format-menu")
+        app.buttons["Heading"].tap()
+        app.buttons["bar-insert"].tap()
+        XCTAssertTrue(app.buttons["Date & time"].waitForExistence(timeout: 5))
+        shot("07e-insert-menu")
+        app.buttons["Date & time"].tap()
+        XCTAssertTrue(wait(for: app.textViews["editor"], toContain: "🕒"))
+        app.buttons["bar-insert"].tap()
+        app.buttons["Location"].tap()
+        XCTAssertTrue(wait(for: app.textViews["editor"], toContain: "📍"))
+        shot("07f-inserted-place-time")
+
         // AI summary (demo engine): shown first, inserted only on Insert.
         app.buttons["aiMenu"].tap()
         app.buttons["Summarize note"].tap()
@@ -132,12 +151,14 @@ final class ScreenshotTests: XCTestCase {
         type("# Typed by the UI test\n\nHello from **CI**.", into: editor)
         app.buttons["quick-Mood"].tap()
         app.buttons["🙂 Good"].firstMatch.tap()
-        app.buttons["quick-Weather"].tap()
+        app.buttons["bar-insert"].tap()
+        app.buttons["Weather"].tap()
         XCTAssertTrue(wait(for: editor, toContain: "Mood: 🙂 Good"))
         XCTAssertTrue(wait(for: editor, toContain: "Weather: 18°C"))
 
         // Today: pick a photo, add the facts.
-        app.buttons["quick-Today"].tap()
+        app.buttons["bar-insert"].tap()
+        app.buttons["Today…"].tap()
         XCTAssertTrue(element(app, labelContaining: "Pay the electricity bill").waitForExistence(timeout: 10))
         // The sheet opens at half height; pull it up so the photo grid loads.
         let photo = app.buttons["todayPhoto"].firstMatch
@@ -150,7 +171,8 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(wait(for: editor, toContain: "- [x] Pay the electricity bill"))
 
         // Today again: an AI summary of the day.
-        app.buttons["quick-Today"].tap()
+        app.buttons["bar-insert"].tap()
+        app.buttons["Today…"].tap()
         XCTAssertTrue(app.buttons["todaySummarize"].waitForExistence(timeout: 10))
         app.buttons["todaySummarize"].tap()
         XCTAssertTrue(app.staticTexts["aiResult"].waitForExistence(timeout: 10))
@@ -180,6 +202,18 @@ final class ScreenshotTests: XCTestCase {
         app.buttons["settings"].tap()
         XCTAssertTrue(app.buttons["changePassword"].waitForExistence(timeout: 10))
         shot("12-settings")
+
+        // Appearance applies at once, even while Settings stays open. The picker is a few
+        // sections down, so scroll until it is on screen.
+        let darkOption = app.buttons["Dark"]
+        var appearanceTries = 0
+        while !(darkOption.exists && darkOption.isHittable) && appearanceTries < 10 {
+            app.swipeUp(velocity: .slow)
+            appearanceTries += 1
+        }
+        darkOption.tap()
+        shot("12b-settings-dark")
+        app.buttons["System"].tap()
 
         open(app, "quickEntries")
         XCTAssertTrue(element(app, labelContaining: "Breakfast").waitForExistence(timeout: 10))
@@ -281,6 +315,26 @@ final class ScreenshotTests: XCTestCase {
         firstNote.tap()
         app.buttons["Preview"].tap()
         shot("22-dark-large-preview")
+    }
+
+    func test4_QuickEntry() {
+        // The Home Screen "Quick entry" action: the sheet opens right after unlock.
+        let app = launch(["-demo", "-quickEntry"])
+        let password = app.secureTextFields["unlockPassword"]
+        XCTAssertTrue(password.waitForExistence(timeout: 15))
+        type(LaunchOptions.demoPassword, into: password)
+        app.buttons["unlock"].tap()
+
+        let sheet = app.descendants(matching: .any)["quickEntrySheet"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 15))
+        app.buttons["qe-mood-1"].tap()
+        type("Quick thought from the Home Screen.", into: app.textFields["qe-text"])
+        shot("23-quick-entry")
+
+        app.buttons["qe-save"].tap()
+        let newNote = element(app, labelContaining: "Quick thought from the Home Screen")
+        XCTAssertTrue(newNote.waitForExistence(timeout: 10))
+        shot("24-after-quick-entry")
     }
 }
 

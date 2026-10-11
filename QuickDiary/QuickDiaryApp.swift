@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct QuickDiaryApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel()
     @StateObject private var quickLists = QuickListStore()
     @StateObject private var ai = AISettings()
@@ -23,15 +24,28 @@ struct QuickDiaryApp: App {
                     }
                 }
                 .task {
+                    appearance.apply()
                     await model.start()
                     if IntentRequests.newEntry {
                         IntentRequests.newEntry = false
                         model.pendingNewEntry = true
                     }
+                    if IntentRequests.quickEntry {
+                        IntentRequests.quickEntry = false
+                        model.pendingQuickEntry = true
+                    }
+                    // `-quickEntry` (demo only): opens the sheet after unlock, for UI tests.
+                    if model.options.isDemo && model.options.quickEntry {
+                        model.pendingQuickEntry = true
+                    }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .quickDiaryNewEntry)) { _ in
                     IntentRequests.newEntry = false
                     model.pendingNewEntry = true
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .quickDiaryQuickEntry)) { _ in
+                    IntentRequests.quickEntry = false
+                    model.pendingQuickEntry = true
                 }
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
@@ -40,6 +54,7 @@ struct QuickDiaryApp: App {
                     default: break
                     }
                 }
+                .onChange(of: appearance) { _, _ in appearance.apply() }
         }
     }
 }
@@ -101,6 +116,27 @@ enum Appearance: String, CaseIterable, Identifiable {
         case .system: nil
         case .light: .light
         case .dark: .dark
+        }
+    }
+
+    var uiStyle: UIUserInterfaceStyle {
+        switch self {
+        case .system: .unspecified
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+
+    /// Sets the style on every window directly, so presented sheets (which keep their own trait
+    /// until closed) pick it up at once. `.preferredColorScheme` on the root view still drives
+    /// the first frame.
+    @MainActor
+    func apply() {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            for window in windowScene.windows {
+                window.overrideUserInterfaceStyle = uiStyle
+            }
         }
     }
 }

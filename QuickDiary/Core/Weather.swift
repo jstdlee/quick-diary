@@ -23,7 +23,7 @@ enum Weather {
     @MainActor
     static func current() async throws -> Now {
         let fetcher = LocationFetcher()
-        let location = try await fetcher.fetch()
+        let location = try await fetcher.fetch(accuracy: kCLLocationAccuracyKilometer)
         withExtendedLifetime(fetcher) {}
         let lat = (location.coordinate.latitude * 100).rounded() / 100
         let lon = (location.coordinate.longitude * 100).rounded() / 100
@@ -62,6 +62,31 @@ enum Weather {
     }
 }
 
+/// The current place, from one ~100 m location fix. Only Apple's geocoder sees it.
+enum Place {
+    static let demo = "Demo Street, Demo City"
+
+    @MainActor
+    static func current() async throws -> String {
+        let fetcher = LocationFetcher()
+        let location = try await fetcher.fetch(accuracy: kCLLocationAccuracyHundredMeters)
+        withExtendedLifetime(fetcher) {}
+        guard let placemark = try await CLGeocoder().reverseGeocodeLocation(location).first else {
+            return rounded(location)
+        }
+        let parts = [placemark.name ?? placemark.thoroughfare, placemark.locality]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+        return parts.isEmpty ? rounded(location) : parts.joined(separator: ", ")
+    }
+
+    private static func rounded(_ location: CLLocation) -> String {
+        let lat = (location.coordinate.latitude * 1000).rounded() / 1000
+        let lon = (location.coordinate.longitude * 1000).rounded() / 1000
+        return "\(lat), \(lon)"
+    }
+}
+
 /// One location fix, asking for permission the first time.
 final class LocationFetcher: NSObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
@@ -69,16 +94,16 @@ final class LocationFetcher: NSObject, CLLocationManagerDelegate {
 
     struct Denied: LocalizedError {
         var errorDescription: String? {
-            String(localized: "Location is off for Quick Diary. Turn it on in the Settings app to add the weather.")
+            String(localized: "Location is off for Quick Diary. Turn it on in the Settings app to add your place or the weather.")
         }
     }
 
     @MainActor
-    func fetch() async throws -> CLLocation {
+    func fetch(accuracy: CLLocationAccuracy) async throws -> CLLocation {
         try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
             manager.delegate = self
-            manager.desiredAccuracy = kCLLocationAccuracyKilometer
+            manager.desiredAccuracy = accuracy
             switch manager.authorizationStatus {
             case .notDetermined: manager.requestWhenInUseAuthorization()
             case .denied, .restricted: finish(.failure(Denied()))

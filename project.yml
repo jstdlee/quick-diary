@@ -31,7 +31,16 @@ targets:
         NSRemindersFullAccessUsageDescription: Show the reminders you completed today, so you can add them to a note. Nothing is changed.
         NSCalendarsFullAccessUsageDescription: Show today's events, so you can add them to a note. Nothing is changed.
         NSPhotoLibraryUsageDescription: Show photos taken today, so you can add the ones you pick to a note. They are encrypted before they are saved.
-        NSLocationWhenInUseUsageDescription: Add the current weather to a note. Your location is rounded to about 1 km and sent to Open-Meteo only when you tap Weather.
+        NSLocationWhenInUseUsageDescription: Add your place and the weather to a note. Location is used only when you tap Location or Weather, or open Quick entry. For the weather, it is rounded to about 1 km and sent to Open-Meteo.
+        NSMicrophoneUsageDescription: Dictate a note with your voice. Speech is turned into text on your iPhone when possible, and the audio is not saved.
+        NSSpeechRecognitionUsageDescription: Turn your speech into text for a note. Speech is turned into text on your iPhone when possible, and the audio is not saved.
+        UIApplicationShortcutItems:
+          - UIApplicationShortcutItemType: com.jstdlee.quickdiary.quick-entry
+            UIApplicationShortcutItemTitle: Quick entry
+            UIApplicationShortcutItemIconSymbolName: bolt.fill
+          - UIApplicationShortcutItemType: com.jstdlee.quickdiary.new-note
+            UIApplicationShortcutItemTitle: New note
+            UIApplicationShortcutItemIconSymbolName: square.and.pencil
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         # The local vault shows in Files › On My iPhone › Quick Diary.

@@ -3,12 +3,14 @@ import Foundation
 
 extension Notification.Name {
     static let quickDiaryNewEntry = Notification.Name("quickDiaryNewEntry")
+    static let quickDiaryQuickEntry = Notification.Name("quickDiaryQuickEntry")
 }
 
-/// Requests from Shortcuts that arrive before the UI is ready.
+/// Requests from Shortcuts or a Home Screen quick action that arrive before the UI is ready.
 @MainActor
 enum IntentRequests {
     static var newEntry = false
+    static var quickEntry = false
 }
 
 /// Opens Quick Diary on a new note (after unlock).

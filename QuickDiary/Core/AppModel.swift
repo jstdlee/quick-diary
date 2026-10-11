@@ -9,12 +9,15 @@ struct LaunchOptions {
     var demo = false
     /// `-demoFresh`: an empty folder, starts at "Create a password".
     var fresh = false
+    /// `-quickEntry` (demo only): opens the Quick entry sheet right after unlock, for UI tests.
+    var quickEntry = false
 
     static let demoPassword = "demo1234"
 
     init(arguments: [String]) {
         demo = arguments.contains("-demo")
         fresh = arguments.contains("-demoFresh")
+        quickEntry = arguments.contains("-quickEntry")
     }
 
     var isDemo: Bool { demo || fresh }
@@ -55,6 +58,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var biometricsOn = false
     /// Set by the "New entry" Shortcut; the notes list opens a new note and clears it.
     @Published var pendingNewEntry = false
+    /// Set by the "Quick entry" Home Screen quick action; the notes list opens the sheet and clears it.
+    @Published var pendingQuickEntry = false
 
     let options: LaunchOptions
     let iterations: Int

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFB340"/>
+      <stop offset="1" stop-color="#FF6A2B"/>
+    </linearGradient>
+    <linearGradient id="bolt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFC94D"/>
+      <stop offset="1" stop-color="#FF8A1F"/>
+    </linearGradient>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#7A2A00" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" fill="#000000"/>
+  <g filter="url(#sh)">
+    <rect x="262" y="212" width="500" height="620" rx="64" fill="#FFFFFF"/>
+  </g>
+  <rect x="262" y="212" width="500" height="120" rx="64" fill="#E6E6E6"/>
+  <rect x="262" y="290" width="500" height="42" fill="#E6E6E6"/>
+  <circle cx="352" cy="272" r="18" fill="#8C8C8C"/>
+  <circle cx="412" cy="272" r="18" fill="#BDBDBD"/>
+  <rect x="332" y="410" width="300" height="34" rx="17" fill="#5A5A5A"/>
+  <rect x="332" y="494" width="360" height="26" rx="13" fill="#B4B4B4"/>
+  <rect x="332" y="562" width="320" height="26" rx="13" fill="#B4B4B4"/>
+  <rect x="332" y="630" width="210" height="26" rx="13" fill="#B4B4B4"/>
+  <g transform="translate(600 600)">
+    <circle cx="70" cy="70" r="122" fill="#000000"/>
+    <circle cx="70" cy="70" r="104" fill="#8C8C8C"/>
+    <path d="M86 -2 L22 84 H66 L52 142 L120 52 H76 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="8" stroke-linejoin="round"/>
+  </g>
+</svg>

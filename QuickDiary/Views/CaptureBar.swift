@@ -3,15 +3,20 @@ import SwiftUI
 import Vision
 import VisionKit
 
-/// Quick capture under the editor, in thumb reach: your quick lists, weather, photo, camera, scan.
+/// The single editor bar: Markdown formatting, your quick lists, and an Insert menu
+/// (date/time, location, weather, Today, photo, camera, scan). Sits in `.safeAreaInset(edge: .bottom)`,
+/// so it rides above the keyboard when the editor has focus, and at the bottom when it doesn't.
 /// Every chip adds one Markdown line at the end of the note.
 struct CaptureBar: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var quickLists: QuickListStore
+    var insertMarker: (String) -> Void
     var append: (String) -> Void
     var onError: (String) -> Void
+    @FocusState.Binding var editorFocused: Bool
 
     @State private var photoItem: PhotosPickerItem?
+    @State private var showPhotoPicker = false
     @State private var showCamera = false
     @State private var showScanner = false
     @State private var showToday = false
@@ -22,39 +27,39 @@ struct CaptureBar: View {
     private let scannerAvailable = VNDocumentCameraViewController.isSupported
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                Button { showToday = true } label: { chip("Today", symbol: "sun.max") }
-                    .accessibilityIdentifier("quick-Today")
-                ForEach(quickLists.lists) { list in
-                    Menu {
-                        ForEach(list.options, id: \.self) { option in
-                            Button(option) { add(list.line(for: option)) }
+        // Insert stays pinned on the left and Hide keyboard on the right; Format and the
+        // quick lists scroll between them.
+        HStack(spacing: 8) {
+            insertMenu
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    formatMenu
+                    ForEach(quickLists.lists) { list in
+                        Menu {
+                            ForEach(list.options, id: \.self) { option in
+                                Button(option) { add(list.line(for: option)) }
+                            }
+                        } label: {
+                            chip(list.name, symbol: list.symbol)
                         }
-                    } label: {
-                        chip(list.name, symbol: list.symbol)
-                    }
-                    .accessibilityIdentifier("quick-\(list.name)")
-                }
-                Button(action: addWeather) {
-                    chip("Weather", symbol: "cloud.sun", working: busy == "weather")
-                }
-                .accessibilityIdentifier("quick-Weather")
-                PhotosPicker(selection: $photoItem, matching: .images) {
-                    chip("Photo", symbol: "photo", working: busy == "photo")
-                }
-                if cameraAvailable {
-                    Button { showCamera = true } label: { chip("Camera", symbol: "camera") }
-                }
-                if scannerAvailable {
-                    Button { showScanner = true } label: {
-                        chip("Scan", symbol: "doc.text.viewfinder", working: busy == "scan")
+                        .accessibilityIdentifier("quick-\(list.name)")
                     }
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            if editorFocused {
+                Button { editorFocused = false } label: {
+                    Image(systemName: "keyboard.chevron.compact.down")
+                        .font(.subheadline)
+                        .frame(width: 36, height: 36)
+                        .background(.fill.secondary, in: Circle())
+                        .contentShape(Circle())
+                }
+                .accessibilityLabel(Text("Hide keyboard"))
+                .accessibilityIdentifier("bar-done")
+            }
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .background(.bar)
         .disabled(busy != nil)
         .sensoryFeedback(.impact(weight: .light), trigger: added)
@@ -63,6 +68,7 @@ struct CaptureBar: View {
             photoItem = nil
             Task { await addPhoto(item) }
         }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
         .sheet(isPresented: $showToday) {
             TodaySheet(demo: model.options.isDemo) { add($0) }
         }
@@ -74,6 +80,45 @@ struct CaptureBar: View {
             DocumentScanner { pages in Task { await addScan(pages) } }
                 .ignoresSafeArea()
         }
+    }
+
+    private var formatMenu: some View {
+        Menu {
+            Button { insertMarker("# ") } label: { Label("Heading", systemImage: "number") }
+            Button { insertMarker("- ") } label: { Label("List", systemImage: "list.bullet") }
+            Button { insertMarker("- [ ] ") } label: { Label("Checkbox", systemImage: "checklist") }
+            Button { insertMarker("> ") } label: { Label("Quote", systemImage: "text.quote") }
+        } label: {
+            chip("Format", symbol: "textformat")
+        }
+        .accessibilityIdentifier("bar-format")
+    }
+
+    private var insertMenu: some View {
+        Menu {
+            Button { addDateTime() } label: { Label("Date & time", systemImage: "clock") }
+                .accessibilityIdentifier("insert-datetime")
+            Button(action: addLocation) { Label("Location", systemImage: "location") }
+                .accessibilityIdentifier("insert-location")
+            Button(action: addWeather) { Label("Weather", systemImage: "cloud.sun") }
+                .accessibilityIdentifier("insert-weather")
+            Button { showToday = true } label: { Label("Today…", systemImage: "sun.max") }
+                .accessibilityIdentifier("insert-today")
+            Divider()
+            Button { showPhotoPicker = true } label: { Label("Photo library", systemImage: "photo") }
+                .accessibilityIdentifier("insert-photo")
+            if cameraAvailable {
+                Button { showCamera = true } label: { Label("Camera", systemImage: "camera") }
+                    .accessibilityIdentifier("insert-camera")
+            }
+            if scannerAvailable {
+                Button { showScanner = true } label: { Label("Scan document", systemImage: "doc.text.viewfinder") }
+                    .accessibilityIdentifier("insert-scan")
+            }
+        } label: {
+            chip("Insert", symbol: "plus.circle", working: busy != nil)
+        }
+        .accessibilityIdentifier("bar-insert")
     }
 
     private func chip(_ title: String, symbol: String, working: Bool = false) -> some View {
@@ -95,6 +140,25 @@ struct CaptureBar: View {
     private func add(_ line: String) {
         append(line)
         added += 1
+    }
+
+    private func addDateTime() {
+        let day = Date.now.formatted(Date.FormatStyle().weekday(.abbreviated).day().month(.abbreviated).year())
+        let time = Date.now.formatted(date: .omitted, time: .shortened)
+        add("- 🕒 \(day) at \(time)")
+    }
+
+    private func addLocation() {
+        busy = "location"
+        Task {
+            defer { busy = nil }
+            do {
+                let place = model.options.isDemo ? Place.demo : try await Place.current()
+                add("- 📍 \(place)")
+            } catch {
+                onError(error.localizedDescription)
+            }
+        }
     }
 
     private func addWeather() {

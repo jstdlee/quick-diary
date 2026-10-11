@@ -1,0 +1,172 @@
+<title>Quick Diary Screens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --ground: #EEF0F3; --surface: #FFFFFF; --ink: #1C2027; --muted: #5E6672; --line: #D6DAE0;
+  --accent: #F2661F; --accent-soft: #FDE6D8; --ok: #1F8A4C; --ok-soft: #DDF2E5; --warn: #B54708; --warn-soft: #FDEBD3;
+  --sans: "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif; --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #15181D; --surface: #1F242B; --ink: #E8EBF0; --muted: #9AA3AF; --line: #323943;
+    --accent: #FF8A4C; --accent-soft: #3A2417; --ok: #4CC27E; --ok-soft: #173123; --warn: #F5A55A; --warn-soft: #3A2A16;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #15181D; --surface: #1F242B; --ink: #E8EBF0; --muted: #9AA3AF; --line: #323943;
+  --accent: #FF8A4C; --accent-soft: #3A2417; --ok: #4CC27E; --ok-soft: #173123; --warn: #F5A55A; --warn-soft: #3A2A16;
+}
+body { background: var(--ground); color: var(--ink); font: 15px/1.45 var(--sans); }
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 64px; }
+header { display: grid; gap: 6px; margin-bottom: 18px; }
+h1 { font-size: 26px; font-weight: 600; margin: 0; text-wrap: balance; }
+.sub { color: var(--muted); margin: 0; max-width: 68ch; }
+.sub code { font-family: var(--mono); font-size: 13px; }
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--ground);
+  display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding-block: 10px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+.seg { display: inline-flex; background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 2px; }
+.seg button { font: 500 13px var(--sans); color: var(--muted); background: none; border: 0; padding: 6px 11px; border-radius: 7px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.tally { margin-left: auto; font: 13px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.tally b { color: var(--ink); font-weight: 500; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; }
+.card { display: grid; grid-template-rows: auto 1fr; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.card[data-status="change"] { border-color: var(--warn); }
+.card[data-status="ok"] { border-color: var(--ok); }
+.shot { display: block; background: var(--ground); border: 0; padding: 12px; cursor: zoom-in; }
+.shot img { display: block; margin: 0 auto; max-height: 380px; width: auto; border-radius: 8px; box-shadow: 0 1px 0 var(--line); }
+.meta { display: grid; gap: 8px; padding: 10px 12px 12px; align-content: start; }
+.name { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.name strong { font-weight: 600; font-size: 14px; }
+.id { font: 11.5px var(--mono); color: var(--muted); }
+.chip { font: 600 10.5px var(--sans); letter-spacing: .04em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); padding: 2px 6px; border-radius: 5px; }
+.verdict { display: flex; gap: 6px; }
+.verdict button { flex: 1; font: 500 13px var(--sans); padding: 6px 0; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.verdict button[data-v="ok"][aria-pressed="true"] { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
+.verdict button[data-v="change"][aria-pressed="true"] { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
+textarea { font: 13px/1.4 var(--sans); color: var(--ink); background: var(--ground); border: 1px solid var(--line); border-radius: 7px; padding: 7px 8px; resize: vertical; min-height: 54px; width: 100%; box-sizing: border-box; }
+.saved { font: 11.5px var(--mono); color: var(--muted); min-height: 1em; }
+button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.off { font-size: 13px; color: var(--warn); }
+dialog { border: 0; padding: 0; background: transparent; max-width: 96vw; max-height: 96vh; }
+dialog::backdrop { background: rgba(10, 12, 16, .82); }
+dialog img { max-height: 92vh; max-width: 94vw; border-radius: 10px; display: block; }
+dialog p { color: #fff; font: 13px var(--mono); text-align: center; margin: 8px 0 0; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Quick Diary screens</h1>
+    <p class="sub">Every screen from the automatic UI tour, on iPhone 17 Pro and iPad Pro 11 (iOS 26.5 simulator), build <code>__LABEL__</code>. Mark each screen <b>OK</b> or <b>Change</b> and add a note; Claude reads your notes from this page.</p>
+    <p class="off" id="offline" hidden>Notes can't be saved in this view (sign in to claude.ai to save them).</p>
+  </header>
+  <div class="bar">
+    <div class="seg" role="group" aria-label="Device">
+      <button type="button" data-device="iphone" aria-pressed="true">iPhone</button>
+      <button type="button" data-device="ipad" aria-pressed="false">iPad</button>
+      <button type="button" data-device="all" aria-pressed="false">Both</button>
+    </div>
+    <div class="seg" role="group" aria-label="Show">
+      <button type="button" data-show="all" aria-pressed="true">All</button>
+      <button type="button" data-show="new" aria-pressed="false">New</button>
+      <button type="button" data-show="todo" aria-pressed="false">Not reviewed</button>
+      <button type="button" data-show="change" aria-pressed="false">Change</button>
+    </div>
+    <div class="tally" id="tally"></div>
+  </div>
+  <div class="grid" id="grid"></div>
+</div>
+<dialog id="zoom"><img id="zoomImg" alt=""><p id="zoomCap"></p></dialog>
+
+<script>
+const SHOTS = __SHOTS__;
+const reviews = {};          // id -> {status, note}
+let device = "iphone", show = "all", db = null;
+
+const grid = document.getElementById("grid");
+function card(s) {
+  const el = document.createElement("article");
+  el.className = "card"; el.dataset.id = s.id;
+  el.innerHTML = `
+    <button class="shot" type="button" aria-label="Enlarge ${s.title}"><img loading="lazy" src="${s.src}" alt="${s.title}"></button>
+    <div class="meta">
+      <div class="name"><strong></strong>${s.new ? '<span class="chip">New</span>' : ''}</div>
+      <div class="id">${s.id}</div>
+      <div class="verdict">
+        <button type="button" data-v="ok" aria-pressed="false">OK</button>
+        <button type="button" data-v="change" aria-pressed="false">Change</button>
+      </div>
+      <label class="id" for="note-${s.id}">Note</label>
+      <textarea id="note-${s.id}" placeholder="What should change?"></textarea>
+      <div class="saved" aria-live="polite"></div>
+    </div>`;
+  el.querySelector("strong").textContent = s.title;
+  el.querySelector(".shot").onclick = () => {
+    document.getElementById("zoomImg").src = s.src;
+    document.getElementById("zoomCap").textContent = `${s.id} · ${s.title}`;
+    document.getElementById("zoom").showModal();
+  };
+  el.querySelectorAll(".verdict button").forEach(b => b.onclick = () => {
+    const cur = reviews[s.id]?.status;
+    save(s.id, { status: cur === b.dataset.v ? "" : b.dataset.v });
+  });
+  const ta = el.querySelector("textarea");
+  ta.addEventListener("change", () => save(s.id, { note: ta.value.trim() }));
+  return el;
+}
+const cards = Object.fromEntries(SHOTS.map(s => { const c = card(s); grid.append(c); return [s.id, c]; }));
+document.getElementById("zoom").onclick = e => e.currentTarget.close();
+
+function paint() {
+  let ok = 0, change = 0, todo = 0;
+  for (const s of SHOTS) {
+    const r = reviews[s.id] || {}, c = cards[s.id];
+    c.dataset.status = r.status || "";
+    c.querySelectorAll(".verdict button").forEach(b => b.setAttribute("aria-pressed", String(r.status === b.dataset.v)));
+    const ta = c.querySelector("textarea");
+    if (document.activeElement !== ta) ta.value = r.note || "";
+    const inDevice = device === "all" || s.device === device;
+    if (inDevice) { if (r.status === "ok") ok++; else if (r.status === "change") change++; else todo++; }
+    const match = show === "all" || (show === "new" && s.new) || (show === "todo" && !r.status) || (show === "change" && r.status === "change");
+    c.hidden = !(inDevice && match);
+  }
+  document.getElementById("tally").innerHTML = `<b>${ok}</b> OK · <b>${change}</b> change · <b>${todo}</b> not reviewed`;
+}
+
+async function save(id, patch) {
+  reviews[id] = { ...(reviews[id] || {}), ...patch };
+  paint();
+  const msg = cards[id].querySelector(".saved");
+  if (!db) { msg.textContent = "Not saved (no connection)"; return; }
+  msg.textContent = "Saving…";
+  try {
+    const r = reviews[id];
+    await db.doc("reviews/" + id).set({ status: r.status || "", note: r.note || "", updated: new Date().toISOString() });
+    msg.textContent = "Saved";
+  } catch (e) { msg.textContent = "Not saved: " + (e?.message || e?.code || "error"); }
+}
+
+document.querySelectorAll("[data-device]").forEach(b => b.onclick = () => {
+  device = b.dataset.device;
+  document.querySelectorAll("[data-device]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  paint();
+});
+document.querySelectorAll("[data-show]").forEach(b => b.onclick = () => {
+  show = b.dataset.show;
+  document.querySelectorAll("[data-show]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  paint();
+});
+paint();
+
+(async () => {
+  db = await window.claude?.use?.("db") ?? null;
+  if (!db) { document.getElementById("offline").hidden = false; return; }
+  db.collection("reviews").onSnapshot(snap => {
+    for (const d of snap.docs) reviews[d.id] = d.data();
+    paint();
+  });
+})();
+</script>
