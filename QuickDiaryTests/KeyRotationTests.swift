@@ -120,7 +120,7 @@ final class KeyRotationTests: XCTestCase {
         try rotate()
         let file = try XCTUnwrap(KeyFileIO.read(in: folder))
         let privateKey = try VaultCrypto.inboxPrivateKey(file, master: newMaster)
-        XCTAssertEqual(Inbox.pending(folder: folder, privateKey: privateKey).map(\.item.text), ["8,214 steps"])
+        XCTAssertEqual(Inbox.pending(folder: folder, privateKey: privateKey).map { $0.item.text }, ["8,214 steps"])
     }
 
     func testPausedRunResumesWithTheNewPasswordOnly() throws {
@@ -153,7 +153,7 @@ final class KeyRotationTests: XCTestCase {
         try KeyRotation.run(folder: folder, rotation: rotation, old: keys.old, new: keys.new,
                             oldKeyFile: keyFile, cancel: CancelFlag()) { _ in }
         let privateKey = try VaultCrypto.inboxPrivateKey(rotation.next, master: newMaster)
-        XCTAssertEqual(Set(Inbox.pending(folder: folder, privateKey: privateKey).map(\.item.text)),
+        XCTAssertEqual(Set(Inbox.pending(folder: folder, privateKey: privateKey).map { $0.item.text }),
                        ["8,214 steps", "added meanwhile"])
     }
 
