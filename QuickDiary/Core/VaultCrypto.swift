@@ -15,6 +15,10 @@ enum VaultError: LocalizedError, Equatable {
     case folderUnavailable
     case iCloudUnavailable
     case keyDownloading
+    case samePassword
+    case keyReplaced
+    case rotationPaused
+    case filesDownloading
 
     var errorDescription: String? {
         switch self {
@@ -40,6 +44,14 @@ enum VaultError: LocalizedError, Equatable {
             String(localized: "iCloud Drive isn't available. Sign in to iCloud, or choose a folder in iCloud Drive with Folder….")
         case .keyDownloading:
             String(localized: "The key file is still downloading from iCloud. Try again in a moment.")
+        case .samePassword:
+            String(localized: "The new password must be different from the current one.")
+        case .keyReplaced:
+            String(localized: "The encryption key was replaced on another device. Unlock with the new password. Unsaved text is kept in a “From Shortcuts” note.")
+        case .rotationPaused:
+            String(localized: "Paused. Nothing is lost: finish with your new password.")
+        case .filesDownloading:
+            String(localized: "Some files are still downloading from iCloud. Wait until they're on this device, then try again.")
         }
     }
 }
@@ -76,6 +88,7 @@ enum VaultCrypto {
     private static let inboxKeyAAD = Data("quick-diary-inbox-key-v1".utf8)
     private static let inboxInfo = Data("quick-diary-inbox-v1".utf8)
     private static let assetAAD = Data("quick-diary-asset-v1".utf8)
+    private static let previousKeyAAD = Data("quick-diary-previous-key-v1".utf8)
     static let inboxMagic = Data("QDI1".utf8)
     static let assetMagic = Data("QDA1".utf8)
 
@@ -222,6 +235,21 @@ enum VaultCrypto {
             return String(decoding: plain, as: UTF8.self)
         } catch {
             throw VaultError.badNote
+        }
+    }
+
+    // MARK: Key replacement — the old key sealed with the new one, so the new password alone finishes a paused run
+
+    static func sealPreviousKey(_ old: SymmetricKey, with new: SymmetricKey) throws -> Data {
+        try AES.GCM.seal(old.rawData, using: new, authenticating: previousKeyAAD).combined!
+    }
+
+    static func openPreviousKey(_ sealed: Data, with new: SymmetricKey) throws -> SymmetricKey {
+        do {
+            let box = try AES.GCM.SealedBox(combined: sealed)
+            return SymmetricKey(data: try AES.GCM.open(box, using: new, authenticating: previousKeyAAD))
+        } catch {
+            throw VaultError.badKeyFile
         }
     }
 

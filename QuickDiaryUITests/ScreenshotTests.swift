@@ -336,6 +336,63 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(newNote.waitForExistence(timeout: 10))
         shot("24-after-quick-entry")
     }
+
+    /// Settings › Replace encryption key: three confirmations, re-encryption, then the new password unlocks.
+    func test5_ReplaceKey() {
+        let app = launch(["-demo"])
+        let password = app.secureTextFields["unlockPassword"]
+        XCTAssertTrue(password.waitForExistence(timeout: 15))
+        type(LaunchOptions.demoPassword, into: password)
+        app.buttons["unlock"].tap()
+        XCTAssertTrue(element(app, labelContaining: "Morning run").waitForExistence(timeout: 15))
+
+        app.buttons["settings"].tap()
+        XCTAssertTrue(app.buttons["changePassword"].waitForExistence(timeout: 10))
+        open(app, "replaceKey")
+
+        // 1 of 3: what happens.
+        let understand = app.switches["rotateUnderstand"]
+        XCTAssertTrue(element(app, labelContaining: "Use this only if").waitForExistence(timeout: 10))
+        shot("25-replace-key-impact")
+        scrollIntoView(understand, in: app)
+        understand.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+        let next = app.buttons["rotateContinue"]
+        scrollIntoView(next, in: app)
+        next.tap()
+
+        // Passwords.
+        type(LaunchOptions.demoPassword, into: app.secureTextFields["rotateCurrent"])
+        type("brand-new-pass", into: app.secureTextFields["rotateNew"])
+        type("brand-new-pass", into: app.secureTextFields["rotateRepeat"])
+        app.buttons["rotatePasswordsContinue"].tap()
+
+        // 2 of 3: the new recovery key, typed back.
+        let keyText = app.descendants(matching: .any)["recoveryKeyText"]
+        XCTAssertTrue(keyText.waitForExistence(timeout: 20))
+        shot("26-replace-key-recovery")
+        let tail = String(keyText.label.filter(\.isHexDigit).suffix(8))
+        let tailField = app.textFields["rotateKeyTail"]
+        scrollIntoView(tailField, in: app)
+        type(tail, into: tailField)
+        let saved = app.switches["rotateSaved"]
+        scrollIntoView(saved, in: app)
+        saved.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+        let keyContinue = app.buttons["rotateKeyContinue"]
+        scrollIntoView(keyContinue, in: app)
+        keyContinue.tap()
+
+        // 3 of 3: type REPLACE, then the alert.
+        type("REPLACE", into: app.textFields["rotateTypeReplace"])
+        shot("27-replace-key-final")
+        app.buttons["rotateStart"].tap()
+        let replace = app.alerts.buttons["Replace key"]
+        XCTAssertTrue(replace.waitForExistence(timeout: 5))
+        shot("28-replace-key-alert")
+        replace.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["rotationDone"].waitForExistence(timeout: 60))
+        shot("29-replace-key-done")
+    }
 }
 
 /// The demo password, duplicated here because UI tests can't import the app module.

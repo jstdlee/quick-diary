@@ -32,6 +32,12 @@ The screenshots come from the UI test tour with demo data (`scripts/ci-test.sh`)
 - **Password + key.** A random 256-bit master key encrypts the notes. Your password unlocks the key file.
 - **Change password** — only the key file is rewritten. Notes are not re-encrypted, so it's instant.
 - **Recovery key** — shown once at setup, and again in Settings with your password. It can set a new password if you forget the old one, or if the key file is lost.
+- **Replace encryption key** (Settings › Security) — for when the key may have leaked: the password leaked and an old copy of the key file exists, or the recovery key leaked. Changing the password alone doesn't help then, because the master key stays the same.
+  - A new master key re-encrypts every note, Recently Deleted note, attachment and waiting Shortcuts item, with a new password, a new recovery key and a new Shortcuts key pair. File dates are kept.
+  - Three confirmations before anything changes: what happens (with counts) → save the new recovery key and type its last 8 characters → type REPLACE, then an alert.
+  - Crash-safe: `quick-diary-rotation.json` is written first (the new key file, plus the old key sealed with the new one). If the run is paused or interrupted, the app opens on "Finish replacing the key" and the new password alone finishes it.
+  - Other devices using the same folder lock when they see the rotation file or a key file that no longer matches their key. Text they couldn't save is kept in a "From Shortcuts" note.
+  - Copies made earlier (backups, exported .zip files, the S3 backup, old key file backups) still open with the old key: delete them.
 - **Key backup** — Settings › Back up key file exports `quick-diary-key.json`. It is still protected by your password.
 - **One editor bar**, on top of the keyboard or at the bottom when the keyboard is hidden:
   - **Insert ▸** date & time, location, weather (Open-Meteo), Today…, photo library, camera, scan (document camera plus on-device text recognition)
