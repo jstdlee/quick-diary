@@ -42,6 +42,8 @@ final class AppModel: ObservableObject {
         case setup
         case missingKey
         case locked
+        /// A key replacement is unfinished (`quick-diary-rotation.json`): finish it with the new password.
+        case rotationPending
         case unlocked
     }
 
@@ -60,6 +62,10 @@ final class AppModel: ObservableObject {
     @Published var pendingNewEntry = false
     /// Set by the "Quick entry" Home Screen quick action; the notes list opens the sheet and clears it.
     @Published var pendingQuickEntry = false
+    /// Progress of a key replacement running on this device.
+    @Published private(set) var rotationProgress: RotationProgress?
+    /// Why the app locked by itself (the key was replaced on another device, a replacement was paused…).
+    @Published var keyNotice: String?
 
     let options: LaunchOptions
     let iterations: Int
@@ -68,6 +74,10 @@ final class AppModel: ObservableObject {
     private var keyFile: KeyFile?
     private var scopedURL: URL?
     private var backgroundedAt: Date?
+    /// The new key and passwords between the wizard's password step and its final confirmation.
+    private var preparedRotation: (master: SymmetricKey, current: String, new: String)?
+    private var rotatingHere = false
+    private var rotationCancel = CancelFlag()
     private let imageCache = NSCache<NSString, UIImage>()
     private let defaults = UserDefaults.standard
 
@@ -161,7 +171,9 @@ final class AppModel: ObservableObject {
         notes = []
         keyFile = try KeyFileIO.read(in: url)
         refreshBiometrics()
-        if keyFile != nil {
+        if RotationIO.exists(in: url) {
+            phase = .rotationPending
+        } else if keyFile != nil {
             phase = .locked
         } else if NoteStore.hasNotes(in: url) {
             phase = .missingKey
@@ -223,6 +235,7 @@ final class AppModel: ObservableObject {
 
     private func didUnlock(_ master: SymmetricKey) {
         key = master
+        keyNotice = nil
         // Vaults made before the inbox existed get inbox keys now.
         if var file = keyFile, file.inboxPublicKey == nil, let folder {
             do {
@@ -238,6 +251,7 @@ final class AppModel: ObservableObject {
 
     func lock() {
         guard keyFile != nil else { return }
+        preparedRotation = nil
         key = nil
         notes = []
         deleted = []
@@ -252,7 +266,9 @@ final class AppModel: ObservableObject {
     /// Locks when the app was away at least `lockAfter` seconds (0 = always).
     func appDidBecomeActive(lockAfter: TimeInterval) {
         defer { backgroundedAt = nil }
-        guard let since = backgroundedAt, phase == .unlocked, !options.isDemo else { return }
+        guard phase == .unlocked, !rotatingHere else { return }
+        guard checkKeyStillCurrent() else { return }
+        guard let since = backgroundedAt, !options.isDemo else { return }
         if Date().timeIntervalSince(since) >= lockAfter { lock() }
     }
 
@@ -397,10 +413,149 @@ final class AppModel: ObservableObject {
         return url
     }
 
+    // MARK: Replacing the key
+
+    /// Counts what a key replacement re-encrypts.
+    func rotationStats() async -> RotationStats {
+        guard let folder else { return RotationStats() }
+        return await Task.detached { KeyRotation.stats(in: folder) }.value
+    }
+
+    /// Checks both passwords and makes the new key. Nothing is written yet. Returns the new recovery key,
+    /// which the wizard shows before anything changes.
+    func prepareRotation(current: String, new: String, confirm: String) async throws -> String {
+        try Self.validate(new, confirm)
+        guard new != current else { throw VaultError.samePassword }
+        guard let keyFile else { throw VaultError.locked }
+        _ = try await Task.detached { try VaultCrypto.unwrap(keyFile, password: current) }.value
+        let master = VaultCrypto.newMasterKey()
+        preparedRotation = (master, current, new)
+        return VaultCrypto.recoveryString(master)
+    }
+
+    func discardPreparedRotation() { preparedRotation = nil }
+
+    /// Pauses a running replacement after the current file.
+    func pauseRotation() { rotationCancel.cancel() }
+
+    /// Re-encrypts everything with the key from `prepareRotation`. On success the app stays unlocked with the
+    /// new key. If it stops half way, the app shows the "finish with the new password" screen.
+    @discardableResult
+    func startRotation() async throws -> RotationProgress {
+        guard let prepared = preparedRotation, let folder, let keyFile else { throw VaultError.locked }
+        guard KeyRotation.pendingDownloads(in: folder).isEmpty else { throw VaultError.filesDownloading }
+        let iterations = self.iterations
+        rotatingHere = true
+        defer { rotatingHere = false }
+        let begun = try await Task.detached {
+            try KeyRotation.begin(folder: folder, keyFile: keyFile, oldPassword: prepared.current,
+                                  newPassword: prepared.new, newMaster: prepared.master, iterations: iterations)
+        }.value
+        preparedRotation = nil
+        return try await runRotation(begun.rotation, old: begun.old, new: prepared.master, oldKeyFile: keyFile)
+    }
+
+    /// Finishes an interrupted replacement (phase `.rotationPending`).
+    @discardableResult
+    func resumeRotation(newPassword: String) async throws -> RotationProgress {
+        guard let folder else { throw VaultError.folderUnavailable }
+        guard let rotation = try RotationIO.read(in: folder) else {
+            try open(folder: folder)
+            throw VaultError.badKeyFile
+        }
+        let keys = try await Task.detached { try KeyRotation.open(rotation, newPassword: newPassword) }.value
+        rotatingHere = true
+        defer { rotatingHere = false }
+        let oldKeyFile = try? KeyFileIO.read(in: folder)
+        return try await runRotation(rotation, old: keys.old, new: keys.new, oldKeyFile: oldKeyFile)
+    }
+
+    private func runRotation(_ rotation: RotationFile, old: SymmetricKey, new: SymmetricKey,
+                             oldKeyFile: KeyFile?) async throws -> RotationProgress {
+        guard let folder else { throw VaultError.folderUnavailable }
+        let cancel = CancelFlag()
+        rotationCancel = cancel
+        rotationProgress = RotationProgress()
+        UIApplication.shared.isIdleTimerDisabled = true
+        // A little time to reach a clean stop if the app goes to the background.
+        let background = UIApplication.shared.beginBackgroundTask(withName: "Replace encryption key") { cancel.cancel() }
+        defer {
+            UIApplication.shared.isIdleTimerDisabled = false
+            UIApplication.shared.endBackgroundTask(background)
+        }
+        do {
+            let result = try await Task.detached { [weak self] in
+                try KeyRotation.run(folder: folder, rotation: rotation, old: old, new: new, oldKeyFile: oldKeyFile,
+                                    cancel: cancel) { progress in
+                    Task { @MainActor in self?.rotationProgress = progress }
+                }
+            }.value
+            rotationProgress = result
+            finishRotation(new: new, next: rotation.next, oldKeyFile: oldKeyFile)
+            return result
+        } catch {
+            // Half done: the "finish with the new password" screen takes over (open() sees the rotation file).
+            try? open(folder: folder)
+            imageCache.removeAllObjects()
+            keyNotice = error.localizedDescription
+            throw error
+        }
+    }
+
+    private func finishRotation(new: SymmetricKey, next: KeyFile, oldKeyFile: KeyFile?) {
+        let biometricsWereOn = biometricsOn
+        if let oldKeyFile { Biometrics.remove(account: oldKeyFile.check.hex) }
+        keyFile = next
+        imageCache.removeAllObjects()
+        if biometricsWereOn { try? Biometrics.save(new, account: next.check.hex) }
+        refreshBiometrics()
+        didUnlock(new)
+    }
+
+    /// False when the key in memory is no longer the vault's key: it was replaced on another device (the key
+    /// file changed), or a replacement is running or paused. Then the app locks, so nothing is written with
+    /// the old key.
+    @discardableResult
+    func checkKeyStillCurrent() -> Bool {
+        guard let folder, let key, !rotatingHere else { return true }
+        if RotationIO.exists(in: folder) {
+            lockBecauseKeyChanged(String(localized: "The encryption key is being replaced. Finish it with the new password."),
+                                  pending: true)
+            return false
+        }
+        if let onDisk = try? KeyFileIO.read(in: folder), !VaultCrypto.matches(key, onDisk) {
+            if let old = keyFile { Biometrics.remove(account: old.check.hex) }
+            keyFile = onDisk
+            lockBecauseKeyChanged(String(localized: "The encryption key was replaced on another device. Unlock with the new password."),
+                                  pending: false)
+            return false
+        }
+        return true
+    }
+
+    private func lockBecauseKeyChanged(_ message: String, pending: Bool) {
+        key = nil
+        notes = []
+        deleted = []
+        imageCache.removeAllObjects()
+        keyNotice = message
+        refreshBiometrics()
+        phase = pending ? .rotationPending : .locked
+    }
+
+    /// Text that could not be saved because the key changed: sealed for the vault's current (or next) key like
+    /// a Shortcuts item, so it shows up in a "From Shortcuts" note after the next unlock.
+    private func keepUnsaved(_ text: String) {
+        guard let folder, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let target = (try? RotationIO.read(in: folder))?.next ?? (try? KeyFileIO.read(in: folder)) else { return }
+        try? Inbox.add(InboxItem(date: Date(), text: text, source: String(localized: "Unsaved edit")),
+                       folder: folder, keyFile: target)
+    }
+
     // MARK: Notes
 
     func reload() {
-        guard let store else { return }
+        guard checkKeyStillCurrent(), let store else { return }
         let listing = store.list()
         notes = listing.notes
         // Recently Deleted keeps notes for 30 days.
@@ -419,6 +574,10 @@ final class AppModel: ObservableObject {
     @discardableResult
     func save(text: String, id: String?) throws -> Note {
         guard let store else { throw VaultError.locked }
+        guard checkKeyStillCurrent() else {
+            keepUnsaved(text)
+            throw VaultError.keyReplaced
+        }
         let note = try store.save(text: text, id: id)
         notes.removeAll { $0.id == note.id }
         notes.insert(note, at: 0)
@@ -450,6 +609,7 @@ final class AppModel: ObservableObject {
     /// Encrypts and stores the image; returns the Markdown line for the note.
     func addImage(_ image: UIImage, alt: String = "Photo") throws -> String {
         guard let assets else { throw VaultError.locked }
+        guard checkKeyStillCurrent() else { throw VaultError.keyReplaced }
         let path = try assets.add(image)
         imageCache.setObject(image, forKey: path as NSString)
         return "![\(alt)](\(path))"

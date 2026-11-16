@@ -194,6 +194,13 @@ struct SettingsView: View {
                 Label("Show recovery key", systemImage: "key.viewfinder")
             }
             .accessibilityIdentifier("recoveryKey")
+            NavigationLink {
+                RotateKeyView()
+            } label: {
+                Label("Replace encryption key", systemImage: "arrow.triangle.2.circlepath")
+                    .foregroundStyle(.red)
+            }
+            .accessibilityIdentifier("replaceKey")
             if let backupURL {
                 ShareLink(item: backupURL) {
                     Label("Back up key file", systemImage: "square.and.arrow.up")
@@ -208,7 +215,7 @@ struct SettingsView: View {
         } header: {
             Text("Security")
         } footer: {
-            Text("Quick Diary also hides your notes in the app switcher. The key file is protected by your password; keep a backup of it and your recovery key apart from your notes.")
+            Text("Quick Diary also hides your notes in the app switcher. The key file is protected by your password; keep a backup of it and your recovery key apart from your notes. Replace the encryption key only if it may have leaked.")
         }
     }
 

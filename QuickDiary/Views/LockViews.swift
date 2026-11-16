@@ -16,6 +16,8 @@ struct RootView: View {
             MissingKeyView()
         case .locked:
             UnlockView()
+        case .rotationPending:
+            FinishRotationView()
         case .unlocked:
             NotesListView()
         }
@@ -210,6 +212,14 @@ struct UnlockView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            if let notice = model.keyNotice {
+                Label(notice, systemImage: "key.horizontal")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 420)
+                    .accessibilityIdentifier("keyNotice")
             }
             VStack(spacing: 12) {
                 SecureField("Password", text: $password)

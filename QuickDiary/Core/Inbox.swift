@@ -29,7 +29,9 @@ enum Inbox {
 
     /// Needs only the key file's public key, so it works while the app is locked.
     static func add(_ item: InboxItem, folder: URL, keyFile: KeyFile) throws {
-        guard let publicKey = keyFile.inboxPublicKey else { throw VaultError.badKeyFile }
+        // While the key is being replaced, new text is sealed for the new key.
+        let target = (try? RotationIO.read(in: folder))?.next ?? keyFile
+        guard let publicKey = target.inboxPublicKey else { throw VaultError.badKeyFile }
         let sealed = try VaultCrypto.sealToInbox(encoder.encode(item), publicKey: publicKey)
         let dir = dir(in: folder)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

@@ -18,6 +18,8 @@ struct HelpView: View {
                 text: "quick-diary-key.json, next to the notes. It holds the master key, locked by your password."),
         Concept(icon: "key.viewfinder", title: "Recovery key",
                 text: "64 characters, shown at setup. It sets a new password if you forget yours. Anyone with it can read your notes."),
+        Concept(icon: "arrow.triangle.2.circlepath", title: "Replace encryption key",
+                text: "Only if the key may have leaked: a new master key re-encrypts every note and attachment, with a new password and recovery key."),
         Concept(icon: "externaldrive", title: "Storage",
                 text: "On this iPhone, iCloud Drive, or any folder in Files. Switching copies notes; nothing is deleted."),
         Concept(icon: "trash", title: "Recently Deleted",

@@ -1,7 +1,9 @@
 name: iOS
 
+# macOS minutes count 10x: build pushes to main and key-rotation only (PRs and manual runs as before).
 on:
   push:
+    branches: [main, key-rotation]
   pull_request:
   workflow_dispatch:
 

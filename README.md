@@ -32,6 +32,7 @@ The screenshots come from the UI test tour with demo data (`scripts/ci-test.sh`)
 - **Password + key.** A random 256-bit master key encrypts the notes. Your password unlocks the key file.
 - **Change password** — only the key file is rewritten. Notes are not re-encrypted, so it's instant.
 - **Recovery key** — shown once at setup, and again in Settings with your password. It can set a new password if you forget the old one, or if the key file is lost.
+- **Replace encryption key** (Settings › Security) — a new master key, when the old one may have leaked. Changing the password is not enough then. [Details below](#replacing-the-encryption-key).
 - **Key backup** — Settings › Back up key file exports `quick-diary-key.json`. It is still protected by your password.
 - **One editor bar**, on top of the keyboard or at the bottom when the keyboard is hidden:
   - **Insert ▸** date & time, location, weather (Open-Meteo), Today…, photo library, camera, scan (document camera plus on-device text recognition)
@@ -71,11 +72,27 @@ master key (random 256-bit) ◀──────── quick-diary-key.json ┘
 2026-10-03_1432.md.enc   = "QDN1" + nonce + ciphertext + tag
 ```
 
-- Changing the password re-wraps the master key with a new salt. Notes stay as they are.
+- Changing the password re-wraps the master key with a new salt. Notes stay as they are. If that master key may already be known, [replace it](#replacing-the-encryption-key).
 - The recovery key is the master key, written as 16 groups of 4 hex digits. Anyone who has it can read the notes.
 - The key file also stores a 16-byte check value (HMAC of the master key). It lets a recovery key be checked without the password.
 - A folder is a whole vault: the key file sits next to the notes. To move the vault, copy the folder.
 - Switching storage copies the key file and notes to the new place. Nothing is moved or deleted.
+
+## Replacing the encryption key
+
+Change password only re-wraps the same master key. Use **Settings › Security › Replace encryption key** when that key may no longer be secret:
+
+- the password leaked, and an old copy of the key file may exist (iCloud versions, a backup, an exported key file), or
+- the recovery key leaked.
+
+A new random 256-bit master key then re-encrypts the vault. The old password, the old recovery key, and backups of the old key file stop opening it.
+
+- Every note, Recently Deleted note, attachment, and waiting Shortcuts item is re-encrypted. File dates stay, so the list order and the 30-day deletion window do not move.
+- You set a new password and get a new recovery key and a new Shortcuts key pair.
+- Nothing is written until three confirmations: what will be re-encrypted (with counts) → save the new recovery key and type its last 8 characters → type `REPLACE`, then confirm the alert.
+- Crash-safe. `quick-diary-rotation.json` is written first. It holds the new key file, and the old master key sealed with the new one (AES-256-GCM). The old key is never stored in the clear. If you pause, or the app is killed, it opens on "Finish replacing the key". The new password alone finishes the run. Files already done are skipped. The rotation file is deleted when the run finishes.
+- Other devices on the same folder lock when they see the rotation file, or a key file that no longer matches the key they hold. Text they could not save is kept in a "From Shortcuts" note, sealed for the new key.
+- Copies made before this (exported .zip files, the S3 backup, iPhone backups, iCloud Drive's Recently Deleted) still open with the old key. Delete them, then back up again.
 
 ## Install on an iPhone
 
@@ -135,6 +152,7 @@ Simulator and CI builds are unsigned, so they have no iCloud container. In those
    - crypto: PBKDF2 known-answer vectors, wrong password, tampering, Unicode passwords, recovery key, password change
    - note store, Markdown parser
    - the app model's unlock, change-password and restore flow
+   - key replacement: re-encrypts notes, deleted notes, attachments and Shortcuts items, keeps file dates, and resumes a paused run with the new password only
 4. Runs UI tests that walk through the app with demo data (editor bar, Insert and Format menus, Quick entry, Settings in dark mode…) and save screenshots to `screenshots/`.
 
 The GitHub workflow uploads them as the **screenshots** artifact.
