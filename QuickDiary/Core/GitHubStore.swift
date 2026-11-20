@@ -8,7 +8,7 @@ struct GitHubFailure: LocalizedError, Equatable {
     static let publicRepo = GitHubFailure(message: "This repo is public. Quick Diary will not upload to it.")
     static let missingBranch = GitHubFailure(message: "Create the repo and the branch on GitHub first.")
 
-    static func http(_ status: Int, path: String) -> GitHubFailure {
+    static func http(_ status: Int, path: String, body: String) -> GitHubFailure {
         switch status {
         case 401, 403:
             return GitHubFailure(message: "Access denied. Check the token, and that the repo is private.")
@@ -17,7 +17,8 @@ struct GitHubFailure: LocalizedError, Equatable {
         case 404:
             return GitHubFailure(message: "Repo not found. Check the owner, repo and token.")
         default:
-            return GitHubFailure(message: "GitHub error \(status).")
+            let detail = body.trimmingCharacters(in: .whitespacesAndNewlines)
+            return GitHubFailure(message: detail.isEmpty ? "GitHub error \(status)." : "GitHub error \(status). \(detail)")
         }
     }
 }
@@ -147,15 +148,18 @@ final class GitHubStore: ObjectStore {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("QuickDiary", forHTTPHeaderField: "User-Agent")
+        let data: Data
+        let response: URLResponse
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = body
+            (data, response) = try await session.upload(for: request, from: body)
+        } else {
+            (data, response) = try await session.data(for: request)
         }
-        let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
             if status == 404, missingIsBranch { throw GitHubFailure.missingBranch }
-            throw GitHubFailure.http(status, path: path)
+            throw GitHubFailure.http(status, path: path, body: String(decoding: data, as: UTF8.self))
         }
         return data
     }
