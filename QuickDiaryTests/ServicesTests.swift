@@ -144,6 +144,198 @@ final class BackupTests: XCTestCase {
         let header = try Data(contentsOf: zip).prefix(2)
         XCTAssertEqual(header, Data("PK".utf8))
     }
+
+    /// A store that refuses every upload. The next destination must still receive the files.
+    func testOneDestinationFailingDoesNotStopTheNext() async {
+        let good = MemoryStore()
+        let runs = await BackupEngine.backUp(folder: folder, destinations: [
+            ("bad", BoomStore(), "p"),
+            ("good", good, "p"),
+        ])
+        XCTAssertEqual(runs.map(\.name), ["bad", "good"])
+        XCTAssertEqual(runs[0].error, "nope")
+        XCTAssertNil(runs[0].summary)
+        XCTAssertEqual(runs[1].summary?.uploaded, 3)
+        XCTAssertEqual(good.objects.count, 3)
+    }
+
+    func testRestoreReadsOnlyTheChosenStore() async throws {
+        let chosen = MemoryStore()
+        let other = MemoryStore()
+        _ = try await BackupEngine.backUp(folder: folder, to: chosen, prefix: "p")
+        try await other.put(Data("only-other".utf8), key: "p/only-other.enc")
+        let target = FileManager.default.temporaryDirectory.appendingPathComponent("RestoreOne-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: target) }
+        let restored = try await BackupEngine.restoreMissing(folder: target, from: chosen, prefix: "p")
+        XCTAssertEqual(restored, 3)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: target.appendingPathComponent("only-other.enc").path))
+    }
+
+    func testS3FingerprintIsTheSinglePartETag() {
+        let store = S3Store(endpoint: URL(string: "https://example.com")!, bucket: "b",
+                            signer: SigV4(accessKey: "a", secretKey: "s", region: "auto"))
+        XCTAssertEqual(store.fingerprint(Data("hello".utf8)), "5d41402abc4b2a76b9719d911017c592")
+    }
+
+    func testOldS3ConfigBecomesTheFirstDestination() throws {
+        let suite = "DestinationTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let config = BackupConfig(endpoint: "https://acct.r2.cloudflarestorage.com", region: "auto",
+                                   bucket: "diary", prefix: "notes", accessKeyID: "AKIA")
+        defaults.set(try JSONEncoder().encode(config), forKey: BackupConfig.storageKey)
+        var box = [Secrets.s3Secret: "sekrit"]
+        let loaded = DestinationLibrary.load(defaults: defaults, getSecret: { box[$0] }, setSecret: { value, account in
+            if value.isEmpty { box.removeValue(forKey: account) } else { box[account] = value }
+        })
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded[0].kind, .s3)
+        XCTAssertEqual(loaded[0].name, "diary")
+        XCTAssertTrue(loaded[0].enabled)
+        XCTAssertEqual(loaded[0].endpoint, "https://acct.r2.cloudflarestorage.com")
+        XCTAssertEqual(loaded[0].region, "auto")
+        XCTAssertEqual(loaded[0].bucket, "diary")
+        XCTAssertEqual(loaded[0].prefix, "notes")
+        XCTAssertEqual(loaded[0].accessKeyID, "AKIA")
+        XCTAssertNil(box[Secrets.s3Secret])
+        XCTAssertEqual(box[DestinationLibrary.secretAccount(loaded[0].id)], "sekrit")
+        XCTAssertNil(defaults.data(forKey: BackupConfig.storageKey))
+        let again = DestinationLibrary.load(defaults: defaults, getSecret: { box[$0] }, setSecret: { _, _ in
+            XCTFail("loading a saved list must not write secrets again")
+        })
+        XCTAssertEqual(again, loaded)
+    }
+}
+
+private final class BoomStore: ObjectStore {
+    func list(prefix: String) async throws -> [String: String] { [:] }
+    func fingerprint(_ data: Data) -> String { ContentHash.md5Hex(data) }
+    func put(_ data: Data, key: String) async throws { throw GitHubFailure(message: "nope") }
+    func get(key: String) async throws -> Data { Data() }
+}
+
+final class GitHubBackupTests: XCTestCase {
+    private var folder: URL!
+
+    override func setUpWithError() throws {
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent("GitHubBackup-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("hello".utf8).write(to: folder.appendingPathComponent("note.enc"))
+    }
+
+    override func tearDownWithError() throws { try? FileManager.default.removeItem(at: folder) }
+
+    /// git blob id of the bytes "hello", computed outside the app.
+    private let helloBlob = "b6fc4c620b67d95f953a5c1c1230aaab5db5a1b0"
+
+    func testFingerprintIsTheGitBlobId() {
+        let store = GitHubStore(owner: "ada", repo: "diary", branch: "main", token: "t")
+        XCTAssertEqual(store.fingerprint(Data("hello".utf8)), helloBlob)
+    }
+
+    func testUnchangedFileIsNotUploaded() async throws {
+        script(tree: [["path": "quick-diary/note.enc", "sha": helloBlob]])
+        let summary = try await BackupEngine.backUp(folder: folder, to: makeStore(), prefix: "quick-diary")
+        XCTAssertEqual(summary.uploaded, 0)
+        XCTAssertEqual(summary.unchanged, 1)
+        XCTAssertFalse(StubProtocol.requests.contains { $0.0.httpMethod == "POST" || $0.0.httpMethod == "PATCH" })
+    }
+
+    func testChangedFileIsOneCommit() async throws {
+        script(tree: [])
+        let summary = try await BackupEngine.backUp(folder: folder, to: makeStore(), prefix: "quick-diary")
+        XCTAssertEqual(summary.uploaded, 1)
+        XCTAssertEqual(summary.skipped, 0)
+        let posts = StubProtocol.requests.filter { $0.0.httpMethod == "POST" }.map { $0.0.url?.path }
+        XCTAssertEqual(posts, [
+            "/repos/ada/diary/git/blobs",
+            "/repos/ada/diary/git/trees",
+            "/repos/ada/diary/git/commits",
+        ])
+        let blob = body(where: { $0.httpMethod == "POST" && $0.url?.path.hasSuffix("/git/blobs") == true })
+        XCTAssertTrue(blob.contains("aGVsbG8="), blob)
+        let tree = body(where: { $0.httpMethod == "POST" && $0.url?.path.hasSuffix("/git/trees") == true })
+        XCTAssertTrue(tree.contains("quick-diary/note.enc"), tree)
+        XCTAssertTrue(tree.contains("BLOBNEW"), tree)
+        let commit = body(where: { $0.httpMethod == "POST" && $0.url?.path.hasSuffix("/git/commits") == true })
+        XCTAssertTrue(commit.contains("Backup Quick Diary"), commit)
+        XCTAssertTrue(commit.contains("COMMIT1"), commit)
+        let patch = StubProtocol.requests.filter { $0.0.httpMethod == "PATCH" }
+        XCTAssertEqual(patch.count, 1)
+        XCTAssertTrue(String(decoding: patch[0].1, as: UTF8.self).contains("COMMIT2"))
+    }
+
+    func testPublicRepoIsRefusedBeforeAnyUpload() async {
+        script(tree: [], isPrivate: false)
+        do {
+            _ = try await BackupEngine.backUp(folder: folder, to: makeStore(), prefix: "quick-diary")
+            XCTFail("a public repo must be refused")
+        } catch {
+            XCTAssertEqual(error as? GitHubFailure, GitHubFailure.publicRepo)
+        }
+        XCTAssertFalse(StubProtocol.requests.contains { $0.0.url?.path.contains("/git/") == true })
+    }
+
+    func testFileAtTheSizeLimitIsLeftOutOfTheCommit() async throws {
+        try Data("ok".utf8).write(to: folder.appendingPathComponent("ok.enc"))
+        script(tree: [])
+        let summary = try await BackupEngine.backUp(folder: folder, to: makeStore(maxBytes: 5), prefix: "quick-diary")
+        XCTAssertEqual(summary.skipped, 1)
+        XCTAssertEqual(summary.uploaded, 1)
+        let tree = body(where: { $0.httpMethod == "POST" && $0.url?.path.hasSuffix("/git/trees") == true })
+        XCTAssertTrue(tree.contains("quick-diary/ok.enc"), tree)
+        XCTAssertFalse(tree.contains("note.enc"), tree)
+    }
+
+    private func makeStore(maxBytes: Int = 95_000_000) -> GitHubStore {
+        let store = GitHubStore(owner: "ada", repo: "diary", branch: "main", token: "ghs_test",
+                                session: StubProtocol.session())
+        store.maxBytes = maxBytes
+        return store
+    }
+
+    private func body(where predicate: (URLRequest) -> Bool) -> String {
+        let match = StubProtocol.requests.first { predicate($0.0) }
+        return String(decoding: match?.1 ?? Data(), as: UTF8.self)
+    }
+
+    private func script(tree: [[String: String]], isPrivate: Bool = true) {
+        StubProtocol.requests = []
+        StubProtocol.handler = { request, _ in
+            let path = request.url?.path ?? ""
+            let method = request.httpMethod ?? "GET"
+            if method == "GET", path == "/repos/ada/diary" {
+                let flag = isPrivate ? "true" : "false"
+                return (200, Data(#"{"private":\#(flag),"default_branch":"main"}"#.utf8))
+            }
+            if method == "GET", path == "/repos/ada/diary/git/ref/heads/main" {
+                return (200, Data(#"{"object":{"sha":"COMMIT1"}}"#.utf8))
+            }
+            if method == "GET", path == "/repos/ada/diary/git/commits/COMMIT1" {
+                return (200, Data(#"{"tree":{"sha":"TREE1"}}"#.utf8))
+            }
+            if method == "GET", path.hasPrefix("/repos/ada/diary/git/trees/TREE1") {
+                let entries = tree.map { #"{"path":"\#($0["path"]!)","type":"blob","sha":"\#($0["sha"]!)"}"# }
+                    .joined(separator: ",")
+                return (200, Data(#"{"tree":[\#(entries)],"truncated":false}"#.utf8))
+            }
+            if method == "POST", path == "/repos/ada/diary/git/blobs" {
+                return (201, Data(#"{"sha":"BLOBNEW"}"#.utf8))
+            }
+            if method == "POST", path == "/repos/ada/diary/git/trees" {
+                return (201, Data(#"{"sha":"TREE2"}"#.utf8))
+            }
+            if method == "POST", path == "/repos/ada/diary/git/commits" {
+                return (201, Data(#"{"sha":"COMMIT2"}"#.utf8))
+            }
+            if method == "PATCH", path == "/repos/ada/diary/git/refs/heads/main" {
+                return (200, Data(#"{"ref":"refs/heads/main"}"#.utf8))
+            }
+            return (500, Data("unexpected \(method) \(path)".utf8))
+        }
+    }
 }
 
 final class AITests: XCTestCase {

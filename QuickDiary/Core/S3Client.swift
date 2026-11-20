@@ -78,12 +78,29 @@ struct SigV4 {
     }
 }
 
-/// Where backups go. S3 in the app; a fake in tests and demo mode.
+enum ContentHash {
+    /// MD5 hex. A single-part S3 upload's ETag is this.
+    static func md5Hex(_ data: Data) -> String {
+        Insecure.MD5.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+/// Where backups go. S3 in the app; a fake in tests and demo mode; GitHub for a repo.
 protocol ObjectStore {
-    /// Object key → ETag (quotes removed).
+    /// Object key → fingerprint. S3: MD5 hex. GitHub: git blob id.
     func list(prefix: String) async throws -> [String: String]
+    func fingerprint(_ data: Data) -> String
+    /// Set when this store will not take the file (GitHub's size cap).
+    func skipReason(for data: Data) -> String?
     func put(_ data: Data, key: String) async throws
     func get(key: String) async throws -> Data
+    /// GitHub turns buffered blobs into one commit here. Other stores do nothing.
+    func finish() async throws
+}
+
+extension ObjectStore {
+    func skipReason(for data: Data) -> String? { nil }
+    func finish() async throws {}
 }
 
 struct S3Error: LocalizedError {
@@ -132,6 +149,8 @@ struct S3Store: ObjectStore {
         }
         return data
     }
+
+    func fingerprint(_ data: Data) -> String { ContentHash.md5Hex(data) }
 
     func list(prefix: String) async throws -> [String: String] {
         var result: [String: String] = [:]

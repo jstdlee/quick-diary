@@ -52,9 +52,11 @@ The screenshots come from the UI test tour with demo data (`scripts/ci-test.sh`)
   - Summarize a note, suggest a title, or summarize your day from Today.
   - Every answer is shown before it goes into a note, with how much text is sent and where.
 - **Backup:**
-  - S3 / R2 (SigV4). Only new and changed files are uploaded, and "Restore missing files" never replaces anything.
+  - Several destinations at once: S3-compatible storage (AWS S3, Cloudflare R2, MinIO, SigV4) and private GitHub repos. **Back up now** uploads to each of them. One failing does not stop the others.
+  - Only new and changed files are uploaded. **Restore missing files** never replaces anything, and asks which destination when there is more than one.
+  - A public GitHub repo is refused. A GitHub backup is one commit. Files of 95 MB or more are skipped there and the result says so.
   - An encrypted **.zip** for Mail, Gmail, Files or AirDrop.
-  - The storage provider sees only encrypted files, plus their names and sizes.
+  - The storage provider sees only encrypted files, plus their names and sizes. The folder on the iPhone stays the vault.
 - **Photo strip** while editing: tap a thumbnail to view it, touch and hold to remove it from the note. The attachment itself stays.
 - **Recently Deleted** keeps notes for 30 days.
 - **Appearance** System / Light / Dark, applied at once.

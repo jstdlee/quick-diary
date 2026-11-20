@@ -33,7 +33,7 @@ struct HelpView: View {
         Concept(icon: "sparkles", title: "AI",
                 text: "Summaries and titles from Apple's on-device model or your own OpenAI-compatible server. You see every answer before it's added."),
         Concept(icon: "externaldrive.badge.icloud", title: "Backup",
-                text: "Copies the encrypted vault to S3 or R2, or into one .zip. Only new and changed files are uploaded; restoring never replaces a file."),
+                text: "Copies the encrypted vault to one or more S3-compatible buckets, or a private GitHub repo, or into one .zip. Only new and changed files are uploaded; restoring never replaces a file."),
         Concept(icon: "square.stack.3d.up", title: "Shortcuts",
                 text: "\"Add to Quick Diary\" works while the app is locked. Use it to bring in Apple Notes, Health or anything Shortcuts can read. The text shows in a \"From Shortcuts\" note after you unlock."),
     ]

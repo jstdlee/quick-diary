@@ -30,7 +30,7 @@ struct PrivacyView: View {
         Row(symbol: "sparkles", title: "AI on your server",
             text: "Only when you tap ✨ or Summarize: that note, or the facts and photos you picked, go to the server you set up. The on-device model sends nothing."),
         Row(symbol: "externaldrive.badge.icloud", title: "Backup",
-            text: "Only when you tap Back up: the encrypted files go to your S3 or R2 bucket. The provider can't read them."),
+            text: "Only when you tap Back up: the encrypted files go to the S3-compatible buckets and private GitHub repos you added. They can't read them."),
         Row(symbol: "square.and.arrow.up", title: "Sharing",
             text: "Only when you tap Share: that note's text, as plain text, to the app you pick."),
     ]
